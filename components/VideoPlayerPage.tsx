@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { LearningCategory, Video } from '../types';
 import Icon from './Icons';
 import VideoCard from './VideoCard';
@@ -45,10 +45,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
             console.error("Failed to fetch new videos:", err);
             const errorMessage = err instanceof Error ? err.message : "Ocorreu um erro desconhecido ao buscar vídeos.";
             setError(errorMessage);
-            // Don't auto-hide the specific API key error message.
-            if (!errorMessage.includes("API do YouTube está bloqueada")) {
-                setTimeout(() => setError(null), 5000);
-            }
+            setTimeout(() => setError(null), 5000);
         } finally {
             setIsLoading(false);
         }

@@ -9,25 +9,40 @@ const Chatbot: React.FC = () => {
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isAiEnabled, setIsAiEnabled] = useState(false);
     const chatContentRef = useRef<HTMLDivElement>(null);
+    
+    useEffect(() => {
+        if (isOpen) {
+            const key = localStorage.getItem('arc7hive_admin_api_key');
+            setIsAiEnabled(!!key && key.trim().length > 0);
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         if (isOpen && messages.length === 0) {
             setIsLoading(true);
             setTimeout(() => {
-                 setMessages([{
-                    role: 'model',
-                    text: "Olá! Eu sou o ARC7, seu assistente de IA na plataforma ARC7HIVE. Como posso ajudar você a explorar nossas trilhas de conhecimento hoje?"
-                }]);
-                setSuggestions([
-                    "O que é o Projeto Evolution?",
-                    "Fale sobre as categorias",
-                    "Qual a última atualização?"
-                ]);
+                if (isAiEnabled) {
+                    setMessages([{
+                        role: 'model',
+                        text: "Olá! Eu sou o ARC7, seu assistente de IA na plataforma ARC7HIVE. Como posso ajudar você a explorar nossas trilhas de conhecimento hoje?"
+                    }]);
+                    setSuggestions([
+                        "O que é o Projeto Evolution?",
+                        "Fale sobre as categorias",
+                        "Qual a última atualização?"
+                    ]);
+                } else {
+                    setMessages([{
+                        role: 'model',
+                        text: "Assistente de IA desativado. Para ativá-lo, o administrador ('Gustavo') precisa configurar uma chave de API válida no 'Modo Desenvolvedor'."
+                    }]);
+                }
                 setIsLoading(false);
             }, 500);
         }
-    }, [isOpen]);
+    }, [isOpen, isAiEnabled]);
 
     useEffect(() => {
         // Scroll to the bottom of the chat window when new messages are added
@@ -41,7 +56,7 @@ const Chatbot: React.FC = () => {
     };
     
     const submitMessage = async (text: string) => {
-        if (!text.trim() || isLoading) return;
+        if (!text.trim() || isLoading || !isAiEnabled) return;
 
         const userMessage: ChatMessage = { role: 'user', text };
         
@@ -130,12 +145,12 @@ const Chatbot: React.FC = () => {
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        placeholder="Pergunte sobre a plataforma..."
+                        placeholder={isAiEnabled ? "Pergunte sobre a plataforma..." : "Assistente desativado"}
                         className="w-full bg-gray-900 border border-gray-700 rounded-full py-2 pl-4 pr-12 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition"
                         aria-label="Sua mensagem"
-                        disabled={isLoading}
+                        disabled={isLoading || !isAiEnabled}
                     />
-                    <button type="submit" className="absolute inset-y-0 right-0 flex items-center justify-center w-10 h-10 text-gray-400 hover:text-brand-red disabled:text-gray-600 transition-colors" disabled={isLoading || !inputValue.trim()}>
+                    <button type="submit" className="absolute inset-y-0 right-0 flex items-center justify-center w-10 h-10 text-gray-400 hover:text-brand-red disabled:text-gray-600 transition-colors" disabled={isLoading || !inputValue.trim() || !isAiEnabled}>
                          <Icon name="Send" className="w-5 h-5" />
                     </button>
                 </div>

@@ -2,6 +2,7 @@ import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
 export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear';
+export type AiProvider = 'gemini' | 'openai';
 
 export interface User {
   name: string;
