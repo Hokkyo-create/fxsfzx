@@ -1,7 +1,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear';
 
 export interface User {
   name: string;
@@ -28,4 +28,9 @@ export interface SocialMediaIdea {
     title: string;
     script: string;
     audio: string;
+}
+
+export interface ChatMessage {
+    role: 'user' | 'model';
+    text: string;
 }

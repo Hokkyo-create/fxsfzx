@@ -5,6 +5,8 @@ import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
 import VideoPlayerPage from './components/VideoPlayerPage';
+import Chatbot from './components/Chatbot';
+import AdminPanel from './components/AdminPanel';
 
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -12,8 +14,18 @@ const App: React.FC = () => {
     const [learningCategories, setLearningCategories] = useState<LearningCategory[]>(initialCategories);
     const [selectedCategory, setSelectedCategory] = useState<LearningCategory | null>(null);
     const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
+    const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
 
     useEffect(() => {
+        // Apply custom admin styles on initial load
+        const customStyles = localStorage.getItem('arc7hive_custom_styles');
+        if (customStyles) {
+            const styleElement = document.createElement('style');
+            styleElement.id = 'custom-admin-styles';
+            styleElement.innerHTML = customStyles;
+            document.head.appendChild(styleElement);
+        }
+
         // Load categories from localStorage, falling back to initial data
         try {
             const storedCategories = localStorage.getItem('arc7hive_categories');
@@ -25,8 +37,8 @@ const App: React.FC = () => {
             setLearningCategories(initialCategories); // Fallback
         }
 
-        // Load current user and their progress
-        const storedUser = sessionStorage.getItem('arc7hive_user');
+        // Load current user and their progress from localStorage for persistence
+        const storedUser = localStorage.getItem('arc7hive_user');
         if (storedUser) {
             const foundUser = users.find(u => u.name === storedUser);
             if (foundUser) {
@@ -63,18 +75,23 @@ const App: React.FC = () => {
 
     const handleLogin = (user: User) => {
         setCurrentUser(user);
-        sessionStorage.setItem('arc7hive_user', user.name);
+        localStorage.setItem('arc7hive_user', user.name);
         setShowWelcome(true);
         const storedProgress = localStorage.getItem(`arc7hive_progress_${user.name}`);
         setWatchedVideos(new Set(storedProgress ? JSON.parse(storedProgress) : []));
     };
 
     const handleLogout = () => {
-        sessionStorage.removeItem('arc7hive_user');
+        localStorage.removeItem('arc7hive_user');
         setCurrentUser(null);
         setSelectedCategory(null);
         setWatchedVideos(new Set());
+        setIsAdminPanelOpen(false); // Close admin panel on logout
     };
+    
+    const handleToggleAdminPanel = () => {
+        setIsAdminPanelOpen(prev => !prev);
+    }
 
     const handleWelcomeFinish = () => {
         setShowWelcome(false);
@@ -126,38 +143,53 @@ const App: React.FC = () => {
     const completedVideos = watchedVideos.size;
     const overallProgress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
 
-    if (!currentUser) {
-        return <LoginPage onLogin={handleLogin} />;
-    }
+    const renderContent = () => {
+        if (!currentUser) {
+            return <LoginPage onLogin={handleLogin} />;
+        }
 
-    if (showWelcome) {
-        return <WelcomeScreen user={currentUser} onFinish={handleWelcomeFinish} />;
-    }
-    
-    if (selectedCategory) {
-        const currentCategoryState = learningCategories.find(c => c.id === selectedCategory.id) || selectedCategory;
+        if (showWelcome) {
+            return <WelcomeScreen user={currentUser} onFinish={handleWelcomeFinish} />;
+        }
+        
+        if (selectedCategory) {
+            const currentCategoryState = learningCategories.find(c => c.id === selectedCategory.id) || selectedCategory;
+            return (
+                <VideoPlayerPage
+                    category={currentCategoryState}
+                    watchedVideos={watchedVideos}
+                    onToggleVideoWatched={handleToggleVideoWatched}
+                    onAddVideos={handleAddVideosToCategory}
+                    onBack={handleBackToDashboard}
+                />
+            );
+        }
+
         return (
-            <VideoPlayerPage
-                category={currentCategoryState}
+            <DashboardPage
+                user={currentUser}
+                onLogout={handleLogout}
+                onSelectCategory={handleSelectCategory}
+                overallProgress={overallProgress}
+                completedVideos={completedVideos}
+                totalVideos={totalVideos}
                 watchedVideos={watchedVideos}
-                onToggleVideoWatched={handleToggleVideoWatched}
-                onAddVideos={handleAddVideosToCategory}
-                onBack={handleBackToDashboard}
+                categories={learningCategories}
+                onToggleAdminPanel={handleToggleAdminPanel}
             />
         );
-    }
+    };
+    
+    const showChatbot = currentUser && !showWelcome && !isAdminPanelOpen;
 
     return (
-        <DashboardPage
-            user={currentUser}
-            onLogout={handleLogout}
-            onSelectCategory={handleSelectCategory}
-            overallProgress={overallProgress}
-            completedVideos={completedVideos}
-            totalVideos={totalVideos}
-            watchedVideos={watchedVideos}
-            categories={learningCategories}
-        />
+        <>
+            {renderContent()}
+            {showChatbot && <Chatbot />}
+            {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
+                <AdminPanel onClose={handleToggleAdminPanel} />
+            )}
+        </>
     );
 };
 
