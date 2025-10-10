@@ -1,4 +1,3 @@
-// FIX: Imported `useMemo` from react to fix 'Cannot find name' error.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
 import type { LearningCategory, User, Video, MeetingMessage } from './types';
@@ -6,10 +5,19 @@ import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
 import VideoPlayerPage from './components/VideoPlayerPage';
-import MeetingPage from './components/Header'; // Re-using Header.tsx for MeetingPage
+import MeetingPage from './components/Header';
 import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import { getMeetingChatResponse } from './services/geminiService';
+import {
+    setupMessagesListener,
+    setupTypingListener,
+    setupOnlineStatusListener,
+    sendMessage,
+    updateTypingStatus,
+    updateUserPresence,
+    goOffline
+} from './services/firebaseService';
 
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -19,7 +27,7 @@ const App: React.FC = () => {
     const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     
-    // Meeting state
+    // Meeting state now powered by Firebase
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
     const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
@@ -27,7 +35,7 @@ const App: React.FC = () => {
     const [isMeetingAiActive, setIsMeetingAiActive] = useState(true);
 
     useEffect(() => {
-        // Apply custom admin styles on initial load
+        // Apply custom admin styles
         const customStyles = localStorage.getItem('arc7hive_custom_styles');
         if (customStyles) {
             const styleElement = document.createElement('style');
@@ -40,9 +48,7 @@ const App: React.FC = () => {
         try {
             const storedCategories = localStorage.getItem('arc7hive_categories');
             if (storedCategories) setLearningCategories(JSON.parse(storedCategories));
-        } catch (error) {
-            console.error("Failed to parse categories from localStorage", error);
-        }
+        } catch (error) { console.error("Failed to parse categories", error); }
 
         // Load user from localStorage
         const storedUser = localStorage.getItem('arc7hive_user');
@@ -53,87 +59,46 @@ const App: React.FC = () => {
                 try {
                     const storedProgress = localStorage.getItem(`arc7hive_progress_${foundUser.name}`);
                     if (storedProgress) setWatchedVideos(new Set(JSON.parse(storedProgress)));
-                } catch (error) {
-                    console.error("Failed to parse progress from localStorage", error);
-                }
+                } catch (error) { console.error("Failed to parse progress", error); }
             }
         }
     }, []);
 
-    // Effect for real-time chat sync using localStorage
+    // Effect for Real-time Firebase Chat Sync
     useEffect(() => {
-        // Clear previous chat history on app load, as requested.
-        localStorage.removeItem('arc7hive_meeting_chat');
-        localStorage.removeItem('arc7hive_meeting_typing');
-        localStorage.removeItem('arc7hive_meeting_online');
-        
-        // Reset state for a clean start
-        setMeetingMessages([]);
-        setTypingUsers(new Set());
-        setOnlineUsers(currentUser ? new Set([currentUser.name]) : new Set());
+        if (!currentUser) return;
 
-        // Load AI state from localStorage
-        try {
-            const storedAiActive = localStorage.getItem('arc7hive_meeting_ai_active');
-            if (storedAiActive) setIsMeetingAiActive(JSON.parse(storedAiActive));
-            else setIsMeetingAiActive(true); // Default to true if not set
-        } catch (error) {
-             console.error("Failed to parse AI active state from localStorage", error);
-        }
+        // Setup presence
+        updateUserPresence(currentUser.name);
 
-        const handleStorageChange = (event: StorageEvent) => {
-            if (!event.key || !event.newValue) return;
-            try {
-                switch (event.key) {
-                    case 'arc7hive_meeting_chat':
-                        setMeetingMessages(JSON.parse(event.newValue));
-                        break;
-                    case 'arc7hive_meeting_typing':
-                        setTypingUsers(new Set(JSON.parse(event.newValue)));
-                        break;
-                    case 'arc7hive_meeting_online':
-                        setOnlineUsers(new Set(JSON.parse(event.newValue)));
-                        break;
-                    case 'arc7hive_meeting_ai_active':
-                        setIsMeetingAiActive(JSON.parse(event.newValue));
-                        break;
-                }
-            } catch(e) {
-                console.error("Failed to parse storage update", e);
-            }
-        };
+        // Setup listeners
+        const unsubscribeMessages = setupMessagesListener((messages) => {
+            setMeetingMessages(messages);
+        });
 
-        window.addEventListener('storage', handleStorageChange);
-        
-        // Announce current user is online when app loads and is logged in
-        if (currentUser) {
-            const currentOnline = JSON.parse(localStorage.getItem('arc7hive_meeting_online') || '[]');
-            const onlineSet = new Set<string>(currentOnline);
-            onlineSet.add(currentUser.name);
-            localStorage.setItem('arc7hive_meeting_online', JSON.stringify(Array.from(onlineSet)));
-            setOnlineUsers(onlineSet); // Update own state
-        }
+        const unsubscribeTyping = setupTypingListener((users) => {
+            setTypingUsers(new Set(users));
+        });
 
+        const unsubscribeOnline = setupOnlineStatusListener((onlineUserNames) => {
+            setOnlineUsers(new Set(onlineUserNames));
+        });
+
+        // Cleanup on logout or component unmount
         return () => {
-            // When component unmounts (e.g., page close), announce offline status
-            if(currentUser) {
-                 const currentOnline = JSON.parse(localStorage.getItem('arc7hive_meeting_online') || '[]');
-                 const onlineSet = new Set<string>(currentOnline);
-                 onlineSet.delete(currentUser.name);
-                 localStorage.setItem('arc7hive_meeting_online', JSON.stringify(Array.from(onlineSet)));
-            }
-            window.removeEventListener('storage', handleStorageChange);
+            unsubscribeMessages();
+            unsubscribeTyping();
+            unsubscribeOnline();
+            goOffline(currentUser.name); // Explicitly set user to offline
         };
-    }, [currentUser]); // This effect now correctly depends on the user session
+    }, [currentUser]);
     
-    // Persist watched videos progress
     useEffect(() => {
         if (currentUser) {
             localStorage.setItem(`arc7hive_progress_${currentUser.name}`, JSON.stringify(Array.from(watchedVideos)));
         }
     }, [watchedVideos, currentUser]);
 
-    // Persist categories list
     useEffect(() => {
         try {
             localStorage.setItem('arc7hive_categories', JSON.stringify(learningCategories));
@@ -150,12 +115,8 @@ const App: React.FC = () => {
     };
 
     const handleLogout = () => {
-        if(currentUser) {
-            const currentOnline = JSON.parse(localStorage.getItem('arc7hive_meeting_online') || '[]');
-            const onlineSet = new Set<string>(currentOnline);
-            onlineSet.delete(currentUser.name);
-            setOnlineUsers(new Set()); // Clear local state
-            localStorage.setItem('arc7hive_meeting_online', JSON.stringify(Array.from(onlineSet)));
+        if (currentUser) {
+            goOffline(currentUser.name);
         }
         localStorage.removeItem('arc7hive_user');
         setCurrentUser(null);
@@ -174,91 +135,25 @@ const App: React.FC = () => {
     const handleSendMessage = useCallback(async (text: string) => {
         if (!currentUser) return;
 
-        const newMessage: MeetingMessage = {
-            id: `${Date.now()}-${currentUser.name}`,
-            user: currentUser.name,
-            text,
-            timestamp: Date.now(),
-        };
-
-        // Read -> Modify -> Write pattern to ensure sync
-        const currentMessages = JSON.parse(localStorage.getItem('arc7hive_meeting_chat') || '[]');
-        let updatedMessages = [...currentMessages, newMessage].slice(-50);
-        
-        localStorage.setItem('arc7hive_meeting_chat', JSON.stringify(updatedMessages));
-        setMeetingMessages(updatedMessages); // Manually update self, others get 'storage' event
+        sendMessage(currentUser.name, text);
 
         if (isMeetingAiActive && text.toLowerCase().startsWith('@arc7')) {
              const aiPrompt = text.substring(5).trim();
-             const responseText = await getMeetingChatResponse(aiPrompt, updatedMessages);
-             
-             const aiMessage: MeetingMessage = {
-                 id: `${Date.now()}-ARC7`,
-                 user: 'ARC7',
-                 text: responseText,
-                 timestamp: Date.now(),
-             };
-             
-             // Read again in case another message arrived during the AI's response time
-             const messagesAfterAiRequest = JSON.parse(localStorage.getItem('arc7hive_meeting_chat') || '[]');
-             const finalMessages = [...messagesAfterAiRequest, aiMessage].slice(-50);
-             
-             localStorage.setItem('arc7hive_meeting_chat', JSON.stringify(finalMessages));
-             setMeetingMessages(finalMessages); // Manually update self again
+             // Pass a snapshot of messages for context
+             const responseText = await getMeetingChatResponse(aiPrompt, [...meetingMessages]);
+             sendMessage('ARC7', responseText);
         }
-    }, [currentUser, isMeetingAiActive]);
+    }, [currentUser, isMeetingAiActive, meetingMessages]);
     
     const handleTypingChange = useCallback((isTyping: boolean) => {
         if (!currentUser) return;
-
-        // Read -> Modify -> Write pattern
-        const storedTyping = JSON.parse(localStorage.getItem('arc7hive_meeting_typing') || '[]');
-        const newTypingUsers = new Set<string>(storedTyping);
-        
-        let hasChanged = false;
-        if (isTyping) {
-            if (!newTypingUsers.has(currentUser.name)) {
-                newTypingUsers.add(currentUser.name);
-                hasChanged = true;
-            }
-        } else {
-            if (newTypingUsers.has(currentUser.name)) {
-                newTypingUsers.delete(currentUser.name);
-                hasChanged = true;
-            }
-        }
-        
-        if (hasChanged) {
-            const asArray = Array.from(newTypingUsers);
-            localStorage.setItem('arc7hive_meeting_typing', JSON.stringify(asArray));
-            setTypingUsers(newTypingUsers); // Manually update self
-        }
+        updateTypingStatus(currentUser.name, isTyping);
     }, [currentUser]);
 
     const handleToggleAi = useCallback(() => {
-        const newIsActive = !isMeetingAiActive;
-        setIsMeetingAiActive(newIsActive); // Update self
-        localStorage.setItem('arc7hive_meeting_ai_active', JSON.stringify(newIsActive)); // Update others
-    }, [isMeetingAiActive]);
-
-    const handlePresenceChange = useCallback((status: 'online' | 'offline') => {
-        if (!currentUser) return;
-        
-        // Read -> Modify -> Write pattern
-        const storedOnline = JSON.parse(localStorage.getItem('arc7hive_meeting_online') || '[]');
-        const newOnlineUsers = new Set<string>(storedOnline);
-
-        if (status === 'online') {
-            newOnlineUsers.add(currentUser.name);
-        } else {
-            newOnlineUsers.delete(currentUser.name);
-        }
-        
-        const asArray = Array.from(newOnlineUsers);
-        localStorage.setItem('arc7hive_meeting_online', JSON.stringify(asArray));
-        setOnlineUsers(newOnlineUsers); // Manually update self
-    }, [currentUser]);
-
+        setIsMeetingAiActive(prev => !prev);
+    }, []);
+    
     const handleWelcomeFinish = () => setShowWelcome(false);
 
     const handleSelectCategory = (category: LearningCategory) => setSelectedCategory(category);
@@ -315,7 +210,6 @@ const App: React.FC = () => {
                     typingUsers={typingUsers}
                     onlineUsers={onlineUsers}
                     onTypingChange={handleTypingChange}
-                    onPresenceChange={handlePresenceChange}
                     isAiActive={isMeetingAiActive}
                     onToggleAi={handleToggleAi}
                 />

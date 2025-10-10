@@ -10,7 +10,6 @@ interface MeetingPageProps {
     typingUsers: Set<string>;
     onlineUsers: Set<string>;
     onTypingChange: (isTyping: boolean) => void;
-    onPresenceChange: (status: 'online' | 'offline') => void;
     isAiActive: boolean;
     onToggleAi: () => void;
 }
@@ -23,26 +22,12 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
     typingUsers, 
     onlineUsers,
     onTypingChange, 
-    onPresenceChange,
     isAiActive, 
     onToggleAi 
 }) => {
     const [inputValue, setInputValue] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const typingTimeoutRef = useRef<number | null>(null);
-
-    // Effect to announce user presence
-    useEffect(() => {
-        onPresenceChange('online');
-        const handleBeforeUnload = () => onPresenceChange('offline');
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        
-        return () => {
-            onPresenceChange('offline');
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-        };
-    }, [onPresenceChange]);
-
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -79,6 +64,8 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
     const isCurrentUser = (messageUser: string) => user.name === messageUser;
     
     const typingNames = Array.from(typingUsers).filter(name => name !== user.name);
+    const onlineNames = Array.from(onlineUsers).filter(name => name !== user.name);
+    const onlineCount = Array.from(onlineUsers).length;
 
     return (
         <div className="min-h-screen bg-darker text-white font-sans flex flex-col">
@@ -96,10 +83,10 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
                                     <h1 className="text-xl font-display tracking-wider text-white">Sala de Reunião</h1>
                                     <div className="text-xs text-gray-400 flex items-center gap-1.5">
                                         <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${onlineCount > 0 ? 'bg-green-400' : 'bg-gray-400'}`}></span>
+                                            <span className={`relative inline-flex rounded-full h-2 w-2 ${onlineCount > 0 ? 'bg-green-500' : 'bg-gray-500'}`}></span>
                                         </span>
-                                        {onlineUsers.size} online: {Array.from(onlineUsers).join(', ')}
+                                        {onlineCount} online: {onlineNames.join(', ')}
                                     </div>
                                 </div>
                             </div>
