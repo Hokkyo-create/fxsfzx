@@ -7,11 +7,42 @@ interface MeetingPageProps {
     messages: MeetingMessage[];
     onSendMessage: (text: string) => void;
     onBack: () => void;
+    typingUsers: Set<string>;
+    onlineUsers: Set<string>;
+    onTypingChange: (isTyping: boolean) => void;
+    onPresenceChange: (status: 'online' | 'offline') => void;
+    isAiActive: boolean;
+    onToggleAi: () => void;
 }
 
-const MeetingPage: React.FC<MeetingPageProps> = ({ user, messages, onSendMessage, onBack }) => {
+const MeetingPage: React.FC<MeetingPageProps> = ({ 
+    user, 
+    messages, 
+    onSendMessage, 
+    onBack, 
+    typingUsers, 
+    onlineUsers,
+    onTypingChange, 
+    onPresenceChange,
+    isAiActive, 
+    onToggleAi 
+}) => {
     const [inputValue, setInputValue] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const typingTimeoutRef = useRef<number | null>(null);
+
+    // Effect to announce user presence
+    useEffect(() => {
+        onPresenceChange('online');
+        const handleBeforeUnload = () => onPresenceChange('offline');
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        
+        return () => {
+            onPresenceChange('offline');
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [onPresenceChange]);
+
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -26,22 +57,66 @@ const MeetingPage: React.FC<MeetingPageProps> = ({ user, messages, onSendMessage
         if (inputValue.trim()) {
             onSendMessage(inputValue);
             setInputValue('');
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            onTypingChange(false);
         }
+    };
+    
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setInputValue(e.target.value);
+        if(!typingTimeoutRef.current) {
+            onTypingChange(true);
+        } else {
+            clearTimeout(typingTimeoutRef.current);
+        }
+
+        typingTimeoutRef.current = window.setTimeout(() => {
+            onTypingChange(false);
+            typingTimeoutRef.current = null;
+        }, 2000);
     };
 
     const isCurrentUser = (messageUser: string) => user.name === messageUser;
+    
+    const typingNames = Array.from(typingUsers).filter(name => name !== user.name);
 
     return (
         <div className="min-h-screen bg-darker text-white font-sans flex flex-col">
             {/* Header */}
             <header className="bg-dark border-b border-gray-900 sticky top-0 z-20 flex-shrink-0">
-                <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center">
-                    <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-4">
-                        <Icon name="ChevronLeft" className="w-6 h-6" />
-                    </button>
-                    <div className="flex items-center gap-3">
-                        <Icon name="UsersGroup" className="w-8 h-8 text-brand-red" />
-                        <h1 className="text-2xl font-display tracking-wider text-white">Sala de Reunião</h1>
+                <div className="container mx-auto px-4 sm:px-6 py-3">
+                    <div className="flex items-center justify-between">
+                         <div className="flex items-center">
+                            <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-4">
+                                <Icon name="ChevronLeft" className="w-6 h-6" />
+                            </button>
+                            <div className="flex items-center gap-3">
+                                <Icon name="UsersGroup" className="w-8 h-8 text-brand-red" />
+                                <div>
+                                    <h1 className="text-xl font-display tracking-wider text-white">Sala de Reunião</h1>
+                                    <div className="text-xs text-gray-400 flex items-center gap-1.5">
+                                        <span className="relative flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                        </span>
+                                        {onlineUsers.size} online: {Array.from(onlineUsers).join(', ')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3" title={isAiActive ? "Desativar IA" : "Ativar IA"}>
+                            <span className={`text-sm font-medium ${isAiActive ? 'text-gray-300' : 'text-gray-500'}`}>IA (@ARC7)</span>
+                            <button
+                                onClick={onToggleAi}
+                                role="switch"
+                                aria-checked={isAiActive}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark focus:ring-brand-red ${isAiActive ? 'bg-brand-red' : 'bg-gray-600'}`}
+                            >
+                                <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isAiActive ? 'translate-x-6' : 'translate-x-1'}`}
+                                />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -68,6 +143,11 @@ const MeetingPage: React.FC<MeetingPageProps> = ({ user, messages, onSendMessage
                     ))}
                     <div ref={messagesEndRef} />
                 </div>
+                <div className="h-6 px-4 text-sm text-gray-400 italic transition-opacity duration-300">
+                    {typingNames.length > 0 &&
+                        `${typingNames.join(', ')} ${typingNames.length > 1 ? 'estão digitando' : 'está digitando'}...`
+                    }
+                </div>
             </main>
 
             {/* Input Form */}
@@ -76,14 +156,14 @@ const MeetingPage: React.FC<MeetingPageProps> = ({ user, messages, onSendMessage
                     <div className="relative">
                         <textarea
                             value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
+                            onChange={handleInputChange}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
                                     handleFormSubmit(e);
                                 }
                             }}
-                            placeholder="Digite sua mensagem... (@ARC7 para ajuda)"
+                            placeholder={isAiActive ? "Digite sua mensagem... (@ARC7 para ajuda)" : "Digite sua mensagem..."}
                             className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-4 pr-12 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition resize-none"
                             rows={1}
                             style={{minHeight: '44px', maxHeight: '150px'}}
