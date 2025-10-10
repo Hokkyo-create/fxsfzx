@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+// FIX: Imported `useMemo` from react to fix 'Cannot find name' error.
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
 import type { LearningCategory, User, Video, MeetingMessage } from './types';
 import LoginPage from './components/LoginPage';
@@ -9,16 +10,6 @@ import MeetingPage from './components/Header'; // Re-using Header.tsx for Meetin
 import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import { getMeetingChatResponse } from './services/geminiService';
-
-// Define the structure for messages sent through the BroadcastChannel
-type BroadcastPayload = 
-    | { type: 'new_message'; payload: MeetingMessage }
-    | { type: 'typing_start'; payload: { user: string } }
-    | { type: 'typing_stop'; payload: { user: string } }
-    | { type: 'toggle_ai'; payload: { isActive: boolean } }
-    | { type: 'user_online'; payload: { user: string } }
-    | { type: 'user_offline'; payload: { user: string } };
-
 
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -34,9 +25,6 @@ const App: React.FC = () => {
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
     const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
     const [isMeetingAiActive, setIsMeetingAiActive] = useState(true);
-
-    // Use a BroadcastChannel for real-time, cross-tab communication
-    const channel = useMemo(() => new BroadcastChannel('arc7hive-meeting-chat'), []);
 
     useEffect(() => {
         // Apply custom admin styles on initial load
@@ -70,59 +58,73 @@ const App: React.FC = () => {
                 }
             }
         }
+    }, []);
 
-        // Load meeting messages from localStorage (for persistence)
-        try {
-            const storedMessages = localStorage.getItem('arc7hive_meeting_chat');
-            if (storedMessages) setMeetingMessages(JSON.parse(storedMessages));
-        } catch (error) {
-            console.error("Failed to parse meeting messages from localStorage", error);
-        }
+    // Effect for real-time chat sync using localStorage
+    useEffect(() => {
+        // Clear previous chat history on app load, as requested.
+        localStorage.removeItem('arc7hive_meeting_chat');
+        localStorage.removeItem('arc7hive_meeting_typing');
+        localStorage.removeItem('arc7hive_meeting_online');
+        
+        // Reset state for a clean start
+        setMeetingMessages([]);
+        setTypingUsers(new Set());
+        setOnlineUsers(currentUser ? new Set([currentUser.name]) : new Set());
 
         // Load AI state from localStorage
         try {
             const storedAiActive = localStorage.getItem('arc7hive_meeting_ai_active');
             if (storedAiActive) setIsMeetingAiActive(JSON.parse(storedAiActive));
+            else setIsMeetingAiActive(true); // Default to true if not set
         } catch (error) {
              console.error("Failed to parse AI active state from localStorage", error);
         }
 
-        // Listener for real-time messages from other tabs
-        const handleChannelMessage = (event: MessageEvent<BroadcastPayload>) => {
-            const { type, payload } = event.data;
-            switch (type) {
-                case 'new_message':
-                    setMeetingMessages(prev => [...prev, payload]);
-                    break;
-                case 'typing_start':
-                    setTypingUsers(prev => new Set(prev).add(payload.user));
-                    break;
-                case 'typing_stop':
-                    setTypingUsers(prev => {
-                        const newSet = new Set(prev);
-                        newSet.delete(payload.user);
-                        return newSet;
-                    });
-                    break;
-                case 'toggle_ai':
-                    setIsMeetingAiActive(payload.isActive);
-                    break;
-                case 'user_online':
-                    setOnlineUsers(prev => new Set(prev).add(payload.user));
-                    break;
-                case 'user_offline':
-                    setOnlineUsers(prev => {
-                        const newSet = new Set(prev);
-                        newSet.delete(payload.user);
-                        return newSet;
-                    });
-                    break;
+        const handleStorageChange = (event: StorageEvent) => {
+            if (!event.key || !event.newValue) return;
+            try {
+                switch (event.key) {
+                    case 'arc7hive_meeting_chat':
+                        setMeetingMessages(JSON.parse(event.newValue));
+                        break;
+                    case 'arc7hive_meeting_typing':
+                        setTypingUsers(new Set(JSON.parse(event.newValue)));
+                        break;
+                    case 'arc7hive_meeting_online':
+                        setOnlineUsers(new Set(JSON.parse(event.newValue)));
+                        break;
+                    case 'arc7hive_meeting_ai_active':
+                        setIsMeetingAiActive(JSON.parse(event.newValue));
+                        break;
+                }
+            } catch(e) {
+                console.error("Failed to parse storage update", e);
             }
         };
 
-        channel.addEventListener('message', handleChannelMessage);
-        return () => channel.removeEventListener('message', handleChannelMessage);
-    }, [channel]);
+        window.addEventListener('storage', handleStorageChange);
+        
+        // Announce current user is online when app loads and is logged in
+        if (currentUser) {
+            const currentOnline = JSON.parse(localStorage.getItem('arc7hive_meeting_online') || '[]');
+            const onlineSet = new Set<string>(currentOnline);
+            onlineSet.add(currentUser.name);
+            localStorage.setItem('arc7hive_meeting_online', JSON.stringify(Array.from(onlineSet)));
+            setOnlineUsers(onlineSet); // Update own state
+        }
+
+        return () => {
+            // When component unmounts (e.g., page close), announce offline status
+            if(currentUser) {
+                 const currentOnline = JSON.parse(localStorage.getItem('arc7hive_meeting_online') || '[]');
+                 const onlineSet = new Set<string>(currentOnline);
+                 onlineSet.delete(currentUser.name);
+                 localStorage.setItem('arc7hive_meeting_online', JSON.stringify(Array.from(onlineSet)));
+            }
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, [currentUser]); // This effect now correctly depends on the user session
     
     // Persist watched videos progress
     useEffect(() => {
@@ -138,14 +140,6 @@ const App: React.FC = () => {
         } catch (error) { console.error("Failed to save categories", error); }
     }, [learningCategories]);
 
-    // Persist meeting messages, but only keep the last 50 to avoid bloating localStorage
-    useEffect(() => {
-        try {
-            const recentMessages = meetingMessages.slice(-50);
-            localStorage.setItem('arc7hive_meeting_chat', JSON.stringify(recentMessages));
-        } catch (error) { console.error("Failed to save meeting messages", error); }
-    }, [meetingMessages]);
-
 
     const handleLogin = (user: User) => {
         setCurrentUser(user);
@@ -157,7 +151,11 @@ const App: React.FC = () => {
 
     const handleLogout = () => {
         if(currentUser) {
-            channel.postMessage({ type: 'user_offline', payload: { user: currentUser.name } });
+            const currentOnline = JSON.parse(localStorage.getItem('arc7hive_meeting_online') || '[]');
+            const onlineSet = new Set<string>(currentOnline);
+            onlineSet.delete(currentUser.name);
+            setOnlineUsers(new Set()); // Clear local state
+            localStorage.setItem('arc7hive_meeting_online', JSON.stringify(Array.from(onlineSet)));
         }
         localStorage.removeItem('arc7hive_user');
         setCurrentUser(null);
@@ -169,11 +167,7 @@ const App: React.FC = () => {
     
     const handleToggleAdminPanel = () => setIsAdminPanelOpen(prev => !prev);
     
-    const handleNavigateToMeeting = () => {
-        setIsMeetingOpen(true);
-        // Clear any stale online users when opening the meeting room
-        setOnlineUsers(new Set(currentUser ? [currentUser.name] : []));
-    };
+    const handleNavigateToMeeting = () => setIsMeetingOpen(true);
 
     const handleBackFromMeeting = () => setIsMeetingOpen(false);
     
@@ -187,13 +181,16 @@ const App: React.FC = () => {
             timestamp: Date.now(),
         };
 
-        // Post to channel. The listener will update the state for everyone, including the sender.
-        channel.postMessage({ type: 'new_message', payload: newMessage });
+        // Read -> Modify -> Write pattern to ensure sync
+        const currentMessages = JSON.parse(localStorage.getItem('arc7hive_meeting_chat') || '[]');
+        let updatedMessages = [...currentMessages, newMessage].slice(-50);
+        
+        localStorage.setItem('arc7hive_meeting_chat', JSON.stringify(updatedMessages));
+        setMeetingMessages(updatedMessages); // Manually update self, others get 'storage' event
 
         if (isMeetingAiActive && text.toLowerCase().startsWith('@arc7')) {
              const aiPrompt = text.substring(5).trim();
-             // Pass a snapshot of messages up to the current one for context
-             const responseText = await getMeetingChatResponse(aiPrompt, [...meetingMessages, newMessage]);
+             const responseText = await getMeetingChatResponse(aiPrompt, updatedMessages);
              
              const aiMessage: MeetingMessage = {
                  id: `${Date.now()}-ARC7`,
@@ -202,28 +199,65 @@ const App: React.FC = () => {
                  timestamp: Date.now(),
              };
              
-             channel.postMessage({ type: 'new_message', payload: aiMessage });
+             // Read again in case another message arrived during the AI's response time
+             const messagesAfterAiRequest = JSON.parse(localStorage.getItem('arc7hive_meeting_chat') || '[]');
+             const finalMessages = [...messagesAfterAiRequest, aiMessage].slice(-50);
+             
+             localStorage.setItem('arc7hive_meeting_chat', JSON.stringify(finalMessages));
+             setMeetingMessages(finalMessages); // Manually update self again
         }
-    }, [currentUser, meetingMessages, channel, isMeetingAiActive]);
+    }, [currentUser, isMeetingAiActive]);
     
     const handleTypingChange = useCallback((isTyping: boolean) => {
         if (!currentUser) return;
-        const type = isTyping ? 'typing_start' : 'typing_stop';
-        channel.postMessage({ type, payload: { user: currentUser.name } });
-    }, [channel, currentUser]);
+
+        // Read -> Modify -> Write pattern
+        const storedTyping = JSON.parse(localStorage.getItem('arc7hive_meeting_typing') || '[]');
+        const newTypingUsers = new Set<string>(storedTyping);
+        
+        let hasChanged = false;
+        if (isTyping) {
+            if (!newTypingUsers.has(currentUser.name)) {
+                newTypingUsers.add(currentUser.name);
+                hasChanged = true;
+            }
+        } else {
+            if (newTypingUsers.has(currentUser.name)) {
+                newTypingUsers.delete(currentUser.name);
+                hasChanged = true;
+            }
+        }
+        
+        if (hasChanged) {
+            const asArray = Array.from(newTypingUsers);
+            localStorage.setItem('arc7hive_meeting_typing', JSON.stringify(asArray));
+            setTypingUsers(newTypingUsers); // Manually update self
+        }
+    }, [currentUser]);
 
     const handleToggleAi = useCallback(() => {
         const newIsActive = !isMeetingAiActive;
-        setIsMeetingAiActive(newIsActive);
-        localStorage.setItem('arc7hive_meeting_ai_active', JSON.stringify(newIsActive));
-        channel.postMessage({ type: 'toggle_ai', payload: { isActive: newIsActive } });
-    }, [isMeetingAiActive, channel]);
+        setIsMeetingAiActive(newIsActive); // Update self
+        localStorage.setItem('arc7hive_meeting_ai_active', JSON.stringify(newIsActive)); // Update others
+    }, [isMeetingAiActive]);
 
     const handlePresenceChange = useCallback((status: 'online' | 'offline') => {
         if (!currentUser) return;
-        const type = status === 'online' ? 'user_online' : 'user_offline';
-        channel.postMessage({ type, payload: { user: currentUser.name } });
-    }, [channel, currentUser]);
+        
+        // Read -> Modify -> Write pattern
+        const storedOnline = JSON.parse(localStorage.getItem('arc7hive_meeting_online') || '[]');
+        const newOnlineUsers = new Set<string>(storedOnline);
+
+        if (status === 'online') {
+            newOnlineUsers.add(currentUser.name);
+        } else {
+            newOnlineUsers.delete(currentUser.name);
+        }
+        
+        const asArray = Array.from(newOnlineUsers);
+        localStorage.setItem('arc7hive_meeting_online', JSON.stringify(asArray));
+        setOnlineUsers(newOnlineUsers); // Manually update self
+    }, [currentUser]);
 
     const handleWelcomeFinish = () => setShowWelcome(false);
 

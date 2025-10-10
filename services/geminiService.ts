@@ -182,15 +182,15 @@ Seja conciso, objetivo e mantenha o foco nos tópicos de IA, Marketing Digital e
 Responda sempre em Português do Brasil.
 `;
 
-export const getMeetingChatResponse = async (message: string, history: MeetingMessage[]): Promise<string> => {
+export const getMeetingChatResponse = async (prompt: string, history: MeetingMessage[]): Promise<string> => {
     const { apiKey, provider } = getAiConfig();
     if (!apiKey) {
         return "A função de IA na reunião está indisponível. A chave de API não foi configurada.";
     }
 
-    const formattedHistory = history.map(msg => ({
-        role: msg.user === 'ARC7' ? 'model' : 'user',
-        text: `${msg.user}: ${msg.text}`
+    const formattedHistoryForOpenAI = history.map(msg => ({
+        role: msg.user === 'ARC7' ? 'assistant' : 'user',
+        content: `${msg.user}: ${msg.text}`
     }));
 
     try {
@@ -202,8 +202,8 @@ export const getMeetingChatResponse = async (message: string, history: MeetingMe
                     model: 'gpt-4o',
                     messages: [
                         { role: 'system', content: meetingSystemInstruction },
-                        ...formattedHistory.slice(-10).map(msg => ({ role: msg.role, content: msg.text })), // Send last 10 messages for context
-                        { role: 'user', content: message }
+                        ...formattedHistoryForOpenAI.slice(-10),
+                        { role: 'user', content: prompt }
                     ],
                     temperature: 0.7,
                 })
@@ -217,16 +217,19 @@ export const getMeetingChatResponse = async (message: string, history: MeetingMe
 
         } else { // Gemini
             const ai = new GoogleGenAI({ apiKey });
-            const geminiHistory = formattedHistory.slice(-10).map(msg => ({ // Send last 10 messages for context
-                role: msg.role,
-                parts: [{ text: msg.text }]
-            }));
-            const chat = ai.chats.create({
+
+            const conversationContext = history
+                .slice(-10) 
+                .map(msg => `${msg.user}: ${msg.text}`)
+                .join('\n');
+
+            const fullPrompt = `Aqui está o histórico recente da conversa da equipe:\n\n${conversationContext}\n\nA partir deste contexto, responda à seguinte pergunta direcionada a você (ARC7): "${prompt}"`;
+
+            const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
+                contents: fullPrompt,
                 config: { systemInstruction: meetingSystemInstruction },
-                history: geminiHistory
             });
-            const response: GenerateContentResponse = await chat.sendMessage({ message });
             return response.text;
         }
     } catch (error) {
