@@ -54,6 +54,17 @@ export const sendMessage = (user: string, text: string) => {
     });
 };
 
+/**
+ * Clears all messages and typing indicators from the meeting room chat.
+ * This is an irreversible action.
+ */
+export const clearMeetingChat = () => {
+    const messagesRef = ref(database, MEETING_CHAT_REF);
+    remove(messagesRef);
+    const typingRef = ref(database, TYPING_STATUS_REF);
+    remove(typingRef);
+};
+
 export const updateTypingStatus = (userName: string, isTyping: boolean) => {
     const userTypingRef = ref(database, `${TYPING_STATUS_REF}/${userName}`);
     if (isTyping) {

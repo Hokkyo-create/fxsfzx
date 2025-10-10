@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Icon from './Icons';
 import { generateLiveStyles } from '../services/geminiService';
+import { clearMeetingChat } from '../services/firebaseService';
 import type { AiProvider } from '../types';
 
 interface AdminPanelProps {
@@ -72,9 +73,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         setTimeout(() => setMessage(''), 3000);
     }
 
+    const handleClearChat = () => {
+        if (window.confirm("Você tem certeza que deseja apagar TODAS as mensagens do chat da reunião? Esta ação é irreversível.")) {
+            clearMeetingChat();
+            setMessage('O histórico do chat da reunião foi limpo com sucesso!');
+            setTimeout(() => setMessage(''), 3000);
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-            <div className="bg-dark border border-gray-800 rounded-lg shadow-2xl shadow-brand-red/20 w-full max-w-2xl mx-4 p-6 flex flex-col">
+            <div className="bg-dark border border-gray-800 rounded-lg shadow-2xl shadow-brand-red/20 w-full max-w-2xl mx-4 p-6 flex flex-col max-h-[90vh]">
                 {/* Header */}
                 <div className="flex items-center justify-between pb-4 border-b border-gray-800 flex-shrink-0 mb-4">
                     <div className="flex items-center gap-3">
@@ -87,7 +96,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 </div>
                 
                 {/* Content */}
-                <div className="space-y-6">
+                <div className="space-y-6 overflow-y-auto pr-2">
                     <div>
                         <label className="text-sm font-medium text-gray-300 block mb-2">Provedor de IA</label>
                         <div className="flex gap-4 p-1 bg-gray-900/50 rounded-lg">
@@ -159,6 +168,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                         >
                             Resetar
                         </button>
+                    </div>
+
+                    <div className="border-t border-gray-800 pt-6 mt-6">
+                        <h4 className="text-lg font-display tracking-wider text-red-500 mb-2">Ações Perigosas</h4>
+                        <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
+                            <p className="text-sm text-gray-300 mb-4">
+                                Esta ação é irreversível e afetará todos os usuários. Use com cuidado.
+                            </p>
+                            <button 
+                                onClick={handleClearChat}
+                                className="w-full sm:w-auto bg-red-800 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition-colors"
+                            >
+                                Limpar Histórico do Chat da Reunião
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

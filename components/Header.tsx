@@ -112,7 +112,7 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
             <main className="flex-grow container mx-auto px-4 sm:px-6 py-4 flex flex-col overflow-y-hidden">
                 <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                     {messages.map((msg) => (
-                        <div key={msg.id} className={`flex items-end gap-2 ${isCurrentUser(msg.user) ? 'justify-end' : 'justify-start'}`}>
+                        <div key={msg.id} className={`flex items-end gap-2 animate-message-in ${isCurrentUser(msg.user) ? 'justify-end' : 'justify-start'}`}>
                             {!isCurrentUser(msg.user) && (
                                 <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center border border-gray-600 ${msg.user === 'ARC7' ? 'bg-gray-700' : 'bg-indigo-600'}`}>
                                     <Icon name={msg.user === 'ARC7' ? 'Brain' : 'User'} className={`w-5 h-5 ${msg.user === 'ARC7' ? 'text-brand-red' : 'text-white'}`} />
@@ -130,9 +130,11 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
                     ))}
                     <div ref={messagesEndRef} />
                 </div>
-                <div className="h-6 px-4 text-sm text-gray-400 italic transition-opacity duration-300">
+                <div className="h-6 px-4 text-sm text-gray-400 italic">
                     {typingNames.length > 0 &&
-                        `${typingNames.join(', ')} ${typingNames.length > 1 ? 'estão digitando' : 'está digitando'}...`
+                        <span className="animate-fast-fade-in">
+                            {`${typingNames.join(', ')} ${typingNames.length > 1 ? 'estão digitando' : 'está digitando'}...`}
+                        </span>
                     }
                 </div>
             </main>
