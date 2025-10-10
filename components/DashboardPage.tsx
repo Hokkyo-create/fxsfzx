@@ -13,6 +13,7 @@ interface DashboardPageProps {
     watchedVideos: Set<string>;
     categories: LearningCategory[];
     onToggleAdminPanel: () => void;
+    onNavigateToMeeting: () => void;
 }
 
 const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -25,6 +26,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     watchedVideos,
     categories,
     onToggleAdminPanel,
+    onNavigateToMeeting,
 }) => {
     return (
         <div className="min-h-screen bg-transparent text-white font-sans">
@@ -36,6 +38,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     </div>
                     <div className="flex items-center gap-4">
                         <span className="text-gray-300">Olá, {user.name}</span>
+                         <button
+                            onClick={onNavigateToMeeting}
+                            className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                            title="Sala de Reunião"
+                            aria-label="Abrir sala de reunião"
+                        >
+                            <Icon name="UsersGroup" className="w-6 h-6" />
+                        </button>
                          {user.name === 'Gustavo' && (
                             <button
                                 onClick={onToggleAdminPanel}

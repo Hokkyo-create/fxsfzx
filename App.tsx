@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
-import type { LearningCategory, User, Video } from './types';
+import type { LearningCategory, User, Video, MeetingMessage } from './types';
 import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
 import VideoPlayerPage from './components/VideoPlayerPage';
+import MeetingPage from './components/Header'; // Re-using Header.tsx for MeetingPage
 import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
+import { getMeetingChatResponse } from './services/geminiService';
 
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -15,6 +17,8 @@ const App: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<LearningCategory | null>(null);
     const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+    const [isMeetingOpen, setIsMeetingOpen] = useState(false);
+    const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
 
     useEffect(() => {
         // Apply custom admin styles on initial load
@@ -54,6 +58,30 @@ const App: React.FC = () => {
                 }
             }
         }
+
+         // Load meeting messages
+        try {
+            const storedMessages = localStorage.getItem('arc7hive_meeting_chat');
+            if (storedMessages) {
+                setMeetingMessages(JSON.parse(storedMessages));
+            }
+        } catch (error) {
+            console.error("Failed to parse meeting messages from localStorage", error);
+        }
+
+        // Listener for cross-tab sync
+        const handleStorageChange = (event: StorageEvent) => {
+            if (event.key === 'arc7hive_meeting_chat' && event.newValue) {
+                try {
+                    setMeetingMessages(JSON.parse(event.newValue));
+                } catch (error) {
+                     console.error("Failed to parse synced messages", error);
+                }
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
     }, []);
     
     // Persist watched videos progress to localStorage
@@ -72,6 +100,15 @@ const App: React.FC = () => {
         }
     }, [learningCategories]);
 
+     // Persist meeting messages to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('arc7hive_meeting_chat', JSON.stringify(meetingMessages));
+        } catch (error) {
+            console.error("Failed to save meeting messages to localStorage", error);
+        }
+    }, [meetingMessages]);
+
 
     const handleLogin = (user: User) => {
         setCurrentUser(user);
@@ -87,11 +124,49 @@ const App: React.FC = () => {
         setSelectedCategory(null);
         setWatchedVideos(new Set());
         setIsAdminPanelOpen(false); // Close admin panel on logout
+        setIsMeetingOpen(false); // Close meeting on logout
     };
     
     const handleToggleAdminPanel = () => {
         setIsAdminPanelOpen(prev => !prev);
     }
+    
+    const handleNavigateToMeeting = () => {
+        setIsMeetingOpen(true);
+    };
+
+    const handleBackFromMeeting = () => {
+        setIsMeetingOpen(false);
+    };
+    
+    const handleSendMessage = async (text: string) => {
+        if (!currentUser) return;
+
+        const newMessage: MeetingMessage = {
+            id: `${Date.now()}-${currentUser.name}`,
+            user: currentUser.name,
+            text,
+            timestamp: Date.now(),
+        };
+
+        const updatedMessages = [...meetingMessages, newMessage];
+        setMeetingMessages(updatedMessages);
+
+        // Check for AI mention
+        if (text.toLowerCase().startsWith('@arc7')) {
+             const aiPrompt = text.substring(5).trim();
+             const responseText = await getMeetingChatResponse(aiPrompt, updatedMessages);
+             
+             const aiMessage: MeetingMessage = {
+                 id: `${Date.now()}-ARC7`,
+                 user: 'ARC7',
+                 text: responseText,
+                 timestamp: Date.now(),
+             };
+             
+             setMeetingMessages(prev => [...prev, aiMessage]);
+        }
+    };
 
     const handleWelcomeFinish = () => {
         setShowWelcome(false);
@@ -151,6 +226,17 @@ const App: React.FC = () => {
         if (showWelcome) {
             return <WelcomeScreen user={currentUser} onFinish={handleWelcomeFinish} />;
         }
+
+        if (isMeetingOpen) {
+            return (
+                <MeetingPage
+                    user={currentUser}
+                    messages={meetingMessages}
+                    onSendMessage={handleSendMessage}
+                    onBack={handleBackFromMeeting}
+                />
+            );
+        }
         
         if (selectedCategory) {
             const currentCategoryState = learningCategories.find(c => c.id === selectedCategory.id) || selectedCategory;
@@ -176,11 +262,12 @@ const App: React.FC = () => {
                 watchedVideos={watchedVideos}
                 categories={learningCategories}
                 onToggleAdminPanel={handleToggleAdminPanel}
+                onNavigateToMeeting={handleNavigateToMeeting}
             />
         );
     };
     
-    const showChatbot = currentUser && !showWelcome && !isAdminPanelOpen;
+    const showChatbot = currentUser && !showWelcome && !isAdminPanelOpen && !isMeetingOpen;
 
     return (
         <>

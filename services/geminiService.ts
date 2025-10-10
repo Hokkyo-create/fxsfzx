@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Chat, GenerateContentResponse } from "@google/genai";
-import type { Video, ChatMessage, AiProvider } from '../types';
+import type { Video, ChatMessage, AiProvider, MeetingMessage } from '../types';
 
 // NOTE: Using the user-provided key directly.
 const YOUTUBE_API_KEY = 'AIzaSyAwudima4ZEO18AQtbY4fzgI02_LpziE8A';
@@ -173,6 +173,69 @@ export const getChatbotResponse = async (message: string, history: ChatMessage[]
         return "Desculpe, estou com um problema para me conectar. Tente novamente em alguns instantes.";
     }
 };
+
+const meetingSystemInstruction = `
+Você é o "ARC7", um assistente de IA participando de uma reunião da equipe ARC7HIVE.
+Sua função é responder a perguntas diretas, fornecer resumos, ou explicar conceitos complexos quando solicitado.
+Você é ativado quando um usuário menciona "@ARC7" em uma mensagem.
+Seja conciso, objetivo e mantenha o foco nos tópicos de IA, Marketing Digital e Finanças, que são o foco da plataforma.
+Responda sempre em Português do Brasil.
+`;
+
+export const getMeetingChatResponse = async (message: string, history: MeetingMessage[]): Promise<string> => {
+    const { apiKey, provider } = getAiConfig();
+    if (!apiKey) {
+        return "A função de IA na reunião está indisponível. A chave de API não foi configurada.";
+    }
+
+    const formattedHistory = history.map(msg => ({
+        role: msg.user === 'ARC7' ? 'model' : 'user',
+        text: `${msg.user}: ${msg.text}`
+    }));
+
+    try {
+        if (provider === 'openai') {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json;charset=UTF-8', 'Authorization': `Bearer ${apiKey}`},
+                body: JSON.stringify({
+                    model: 'gpt-4o',
+                    messages: [
+                        { role: 'system', content: meetingSystemInstruction },
+                        ...formattedHistory.slice(-10).map(msg => ({ role: msg.role, content: msg.text })), // Send last 10 messages for context
+                        { role: 'user', content: message }
+                    ],
+                    temperature: 0.7,
+                })
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`OpenAI: ${errorData.error?.message || 'Erro desconhecido'}`);
+            }
+            const data = await response.json();
+            return data.choices[0]?.message?.content || "Não recebi uma resposta.";
+
+        } else { // Gemini
+            const ai = new GoogleGenAI({ apiKey });
+            const geminiHistory = formattedHistory.slice(-10).map(msg => ({ // Send last 10 messages for context
+                role: msg.role,
+                parts: [{ text: msg.text }]
+            }));
+            const chat = ai.chats.create({
+                model: 'gemini-2.5-flash',
+                config: { systemInstruction: meetingSystemInstruction },
+                history: geminiHistory
+            });
+            const response: GenerateContentResponse = await chat.sendMessage({ message });
+            return response.text;
+        }
+    } catch (error) {
+        console.error(`Error getting meeting response from ${provider}:`, error);
+        if (error instanceof Error) return `Ocorreu um erro com a IA: ${error.message}`;
+        return "Desculpe, a IA encontrou um problema. Tente novamente.";
+    }
+};
+
 
 export const generateLiveStyles = async (prompt: string, apiKey: string, provider: AiProvider): Promise<string> => {
     const styleGenSystemInstruction = `

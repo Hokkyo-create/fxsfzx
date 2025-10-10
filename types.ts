@@ -1,7 +1,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup';
 export type AiProvider = 'gemini' | 'openai';
 
 export interface User {
@@ -34,4 +34,11 @@ export interface SocialMediaIdea {
 export interface ChatMessage {
     role: 'user' | 'model';
     text: string;
+}
+
+export interface MeetingMessage {
+    id: string;
+    user: string;
+    text: string;
+    timestamp: number;
 }
