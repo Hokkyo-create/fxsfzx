@@ -2,6 +2,7 @@ import React from 'react';
 import type { User, LearningCategory } from '../types';
 import CategoryCard from './CategoryCard';
 import Icon from './Icons';
+import Avatar from './Avatar';
 
 interface DashboardPageProps {
     user: User;
@@ -14,6 +15,7 @@ interface DashboardPageProps {
     categories: LearningCategory[];
     onToggleAdminPanel: () => void;
     onNavigateToMeeting: () => void;
+    onOpenProfileModal: () => void;
 }
 
 const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -27,6 +29,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     categories,
     onToggleAdminPanel,
     onNavigateToMeeting,
+    onOpenProfileModal,
 }) => {
     return (
         <div className="min-h-screen bg-transparent text-white font-sans">
@@ -37,7 +40,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                         ARC<span className="text-brand-red">7</span>HIVE
                     </div>
                     <div className="flex items-center gap-4">
-                        <span className="text-gray-300">Olá, {user.name}</span>
+                        <div className="flex items-center gap-3">
+                            <span className="text-gray-300 hidden sm:block">Olá, {user.name}</span>
+                            <button onClick={onOpenProfileModal} title="Alterar foto de perfil" className="transition-transform transform hover:scale-110">
+                                <Avatar src={user.avatarUrl} name={user.name} />
+                            </button>
+                        </div>
                          <button
                             onClick={onNavigateToMeeting}
                             className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"

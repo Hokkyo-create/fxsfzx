@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
-import type { LearningCategory, User, Video, MeetingMessage } from './types';
+import type { LearningCategory, User, Video, MeetingMessage, OnlineUser } from './types';
 import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
@@ -8,6 +8,7 @@ import VideoPlayerPage from './components/VideoPlayerPage';
 import MeetingPage from './components/Header';
 import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
+import ProfileModal from './components/ProfileModal';
 import { getMeetingChatResponse } from './services/geminiService';
 import {
     setupMessagesListener,
@@ -26,12 +27,13 @@ const App: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<LearningCategory | null>(null);
     const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     
-    // Meeting state now powered by Firebase
+    // Meeting state
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
     const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-    const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+    const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
     const [isMeetingAiActive, setIsMeetingAiActive] = useState(true);
 
     useEffect(() => {
@@ -51,11 +53,14 @@ const App: React.FC = () => {
         } catch (error) { console.error("Failed to parse categories", error); }
 
         // Load user from localStorage
-        const storedUser = localStorage.getItem('arc7hive_user');
-        if (storedUser) {
-            const foundUser = users.find(u => u.name === storedUser);
+        const storedUserName = localStorage.getItem('arc7hive_user');
+        if (storedUserName) {
+            const foundUser = users.find(u => u.name === storedUserName);
             if (foundUser) {
-                setCurrentUser(foundUser);
+                const storedAvatar = localStorage.getItem(`arc7hive_avatar_${foundUser.name}`);
+                const userWithAvatar = { ...foundUser, avatarUrl: storedAvatar || foundUser.avatarUrl };
+                setCurrentUser(userWithAvatar);
+                
                 try {
                     const storedProgress = localStorage.getItem(`arc7hive_progress_${foundUser.name}`);
                     if (storedProgress) setWatchedVideos(new Set(JSON.parse(storedProgress)));
@@ -69,7 +74,7 @@ const App: React.FC = () => {
         if (!currentUser) return;
 
         // Setup presence
-        updateUserPresence(currentUser.name);
+        updateUserPresence(currentUser.name, currentUser.avatarUrl);
 
         // Setup listeners
         const unsubscribeMessages = setupMessagesListener((messages) => {
@@ -80,8 +85,8 @@ const App: React.FC = () => {
             setTypingUsers(new Set(users));
         });
 
-        const unsubscribeOnline = setupOnlineStatusListener((onlineUserNames) => {
-            setOnlineUsers(new Set(onlineUserNames));
+        const unsubscribeOnline = setupOnlineStatusListener((onlineUsersData) => {
+            setOnlineUsers(onlineUsersData);
         });
 
         // Cleanup on logout or component unmount
@@ -89,7 +94,7 @@ const App: React.FC = () => {
             unsubscribeMessages();
             unsubscribeTyping();
             unsubscribeOnline();
-            goOffline(currentUser.name); // Explicitly set user to offline
+            goOffline(currentUser.name);
         };
     }, [currentUser]);
     
@@ -107,7 +112,9 @@ const App: React.FC = () => {
 
 
     const handleLogin = (user: User) => {
-        setCurrentUser(user);
+        const storedAvatar = localStorage.getItem(`arc7hive_avatar_${user.name}`);
+        const userToLogin = { ...user, avatarUrl: storedAvatar || user.avatarUrl };
+        setCurrentUser(userToLogin);
         localStorage.setItem('arc7hive_user', user.name);
         setShowWelcome(true);
         const storedProgress = localStorage.getItem(`arc7hive_progress_${user.name}`);
@@ -135,13 +142,13 @@ const App: React.FC = () => {
     const handleSendMessage = useCallback(async (text: string) => {
         if (!currentUser) return;
 
-        sendMessage(currentUser.name, text);
+        sendMessage(currentUser.name, text, currentUser.avatarUrl);
 
         if (isMeetingAiActive && text.toLowerCase().startsWith('@arc7')) {
              const aiPrompt = text.substring(5).trim();
-             // Pass a snapshot of messages for context
              const responseText = await getMeetingChatResponse(aiPrompt, [...meetingMessages]);
-             sendMessage('ARC7', responseText);
+             // The AI avatar is fixed
+             sendMessage('ARC7', responseText, 'https://placehold.co/100x100/71717A/FFFFFF?text=AI');
         }
     }, [currentUser, isMeetingAiActive, meetingMessages]);
     
@@ -159,6 +166,15 @@ const App: React.FC = () => {
     const handleSelectCategory = (category: LearningCategory) => setSelectedCategory(category);
     
     const handleBackToDashboard = () => setSelectedCategory(null);
+
+    const handleUpdateAvatar = (newAvatarUrl: string) => {
+        if (!currentUser) return;
+        const updatedUser = { ...currentUser, avatarUrl: newAvatarUrl };
+        setCurrentUser(updatedUser);
+        localStorage.setItem(`arc7hive_avatar_${currentUser.name}`, newAvatarUrl);
+        // Update presence in Firebase with new avatar
+        updateUserPresence(currentUser.name, newAvatarUrl);
+    };
     
     const handleToggleVideoWatched = (videoId: string) => {
         setWatchedVideos(prev => {
@@ -241,6 +257,7 @@ const App: React.FC = () => {
                 categories={learningCategories}
                 onToggleAdminPanel={handleToggleAdminPanel}
                 onNavigateToMeeting={handleNavigateToMeeting}
+                onOpenProfileModal={() => setIsProfileModalOpen(true)}
             />
         );
     };
@@ -253,6 +270,14 @@ const App: React.FC = () => {
             {showChatbot && <Chatbot />}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
                 <AdminPanel onClose={handleToggleAdminPanel} />
+            )}
+            {currentUser && isProfileModalOpen && (
+                <ProfileModal
+                    isOpen={isProfileModalOpen}
+                    onClose={() => setIsProfileModalOpen(false)}
+                    currentAvatar={currentUser.avatarUrl}
+                    onSave={handleUpdateAvatar}
+                />
             )}
         </>
     );

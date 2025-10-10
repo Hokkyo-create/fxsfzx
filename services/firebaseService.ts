@@ -1,7 +1,7 @@
 // services/firebaseService.ts
 import { database } from '../firebaseConfig';
 import { ref, onValue, push, set, serverTimestamp, onDisconnect, remove } from "firebase/database";
-import type { MeetingMessage } from '../types';
+import type { MeetingMessage, OnlineUser } from '../types';
 
 const MEETING_CHAT_REF = 'meeting_room/messages';
 const TYPING_STATUS_REF = 'meeting_room/typing';
@@ -32,12 +32,11 @@ export const setupTypingListener = (callback: (typingUsers: string[]) => void) =
     return unsubscribe;
 }
 
-export const setupOnlineStatusListener = (callback: (onlineUsers: string[]) => void) => {
+export const setupOnlineStatusListener = (callback: (onlineUsers: OnlineUser[]) => void) => {
     const onlineRef = ref(database, ONLINE_STATUS_REF);
     const unsubscribe = onValue(onlineRef, (snapshot) => {
         const data = snapshot.val();
-        // Firebase now only stores online users, so we can just take the keys.
-        const users = data ? Object.keys(data) : [];
+        const users = data ? Object.values(data) as OnlineUser[] : [];
         callback(users);
     });
     return unsubscribe;
@@ -45,11 +44,12 @@ export const setupOnlineStatusListener = (callback: (onlineUsers: string[]) => v
 
 // --- Actions ---
 
-export const sendMessage = (user: string, text: string) => {
+export const sendMessage = (user: string, text: string, avatarUrl: string) => {
     const messagesRef = ref(database, MEETING_CHAT_REF);
     push(messagesRef, {
         user,
         text,
+        avatarUrl,
         timestamp: serverTimestamp()
     });
 };
@@ -74,25 +74,26 @@ export const updateTypingStatus = (userName: string, isTyping: boolean) => {
     }
 };
 
-export const updateUserPresence = (userName: string) => {
+export const updateUserPresence = (userName: string, avatarUrl: string) => {
     const userStatusRef = ref(database, `${ONLINE_STATUS_REF}/${userName}`);
-    const isOnlineForDatabase = true;
+    
+    const presenceData = {
+        name: userName,
+        avatarUrl: avatarUrl
+    };
 
     const connectedRef = ref(database, '.info/connected');
     onValue(connectedRef, (snapshot) => {
         if (snapshot.val() === false) {
             return;
         }
-        // When the client disconnects, remove their presence entry entirely.
         onDisconnect(userStatusRef).remove().then(() => {
-            // Set presence to true when connected.
-            set(userStatusRef, isOnlineForDatabase);
+            set(userStatusRef, presenceData);
         });
     });
 };
 
 export const goOffline = (userName: string) => {
     const userStatusRef = ref(database, `${ONLINE_STATUS_REF}/${userName}`);
-    // Remove the user from the online list when they log out.
     remove(userStatusRef);
 }

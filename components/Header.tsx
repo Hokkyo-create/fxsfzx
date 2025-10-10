@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import type { User, MeetingMessage } from '../types';
+import type { User, MeetingMessage, OnlineUser } from '../types';
 import Icon from './Icons';
+import Avatar from './Avatar';
 
 interface MeetingPageProps {
     user: User;
@@ -8,7 +9,7 @@ interface MeetingPageProps {
     onSendMessage: (text: string) => void;
     onBack: () => void;
     typingUsers: Set<string>;
-    onlineUsers: Set<string>;
+    onlineUsers: OnlineUser[];
     onTypingChange: (isTyping: boolean) => void;
     isAiActive: boolean;
     onToggleAi: () => void;
@@ -64,8 +65,6 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
     const isCurrentUser = (messageUser: string) => user.name === messageUser;
     
     const typingNames = Array.from(typingUsers).filter(name => name !== user.name);
-    const onlineNames = Array.from(onlineUsers).filter(name => name !== user.name);
-    const onlineCount = Array.from(onlineUsers).length;
 
     return (
         <div className="min-h-screen bg-darker text-white font-sans flex flex-col">
@@ -83,10 +82,15 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
                                     <h1 className="text-xl font-display tracking-wider text-white">Sala de Reunião</h1>
                                     <div className="text-xs text-gray-400 flex items-center gap-1.5">
                                         <span className="relative flex h-2 w-2">
-                                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${onlineCount > 0 ? 'bg-green-400' : 'bg-gray-400'}`}></span>
-                                            <span className={`relative inline-flex rounded-full h-2 w-2 ${onlineCount > 0 ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${onlineUsers.length > 0 ? 'bg-green-400' : 'bg-gray-400'}`}></span>
+                                            <span className={`relative inline-flex rounded-full h-2 w-2 ${onlineUsers.length > 0 ? 'bg-green-500' : 'bg-gray-500'}`}></span>
                                         </span>
-                                        {onlineCount} online: {onlineNames.join(', ')}
+                                        {onlineUsers.length} online
+                                        <div className="flex items-center -space-x-2 ml-2">
+                                            {onlineUsers.map(onlineUser => (
+                                                <Avatar key={onlineUser.name} src={onlineUser.avatarUrl} name={onlineUser.name} size="sm" className="border-2 border-dark" />
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -114,9 +118,7 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
                     {messages.map((msg) => (
                         <div key={msg.id} className={`flex items-end gap-2 animate-message-in ${isCurrentUser(msg.user) ? 'justify-end' : 'justify-start'}`}>
                             {!isCurrentUser(msg.user) && (
-                                <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center border border-gray-600 ${msg.user === 'ARC7' ? 'bg-gray-700' : 'bg-indigo-600'}`}>
-                                    <Icon name={msg.user === 'ARC7' ? 'Brain' : 'User'} className={`w-5 h-5 ${msg.user === 'ARC7' ? 'text-brand-red' : 'text-white'}`} />
-                                </div>
+                                <Avatar src={msg.avatarUrl} name={msg.user} size="sm" className="self-end" />
                             )}
                             <div className={`max-w-[70%]`}>
                                 {!isCurrentUser(msg.user) && (

@@ -1,12 +1,20 @@
+// types.ts
+
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload';
 export type AiProvider = 'gemini' | 'openai';
 
 export interface User {
   name: string;
   password?: string;
+  avatarUrl: string; // Added for profile pictures
+}
+
+export interface OnlineUser {
+    name: string;
+    avatarUrl: string;
 }
 
 export interface Video {
@@ -37,8 +45,9 @@ export interface ChatMessage {
 }
 
 export interface MeetingMessage {
-    id: string;
+    id:string;
     user: string;
     text: string;
     timestamp: number;
+    avatarUrl: string; // Added for profile pictures
 }

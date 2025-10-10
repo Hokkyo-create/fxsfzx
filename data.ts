@@ -1,9 +1,9 @@
 import type { User, LearningCategory } from './types';
 
 export const users: User[] = [
-    { name: 'Gustavo', password: '9921' },
-    { name: 'Yago', password: '8845' },
-    { name: 'Victor', password: '4975' },
+    { name: 'Gustavo', password: '9921', avatarUrl: 'https://placehold.co/100x100/E50914/FFFFFF?text=G' },
+    { name: 'Yago', password: '8845', avatarUrl: 'https://placehold.co/100x100/1E40AF/FFFFFF?text=Y' },
+    { name: 'Victor', password: '4975', avatarUrl: 'https://placehold.co/100x100/16A34A/FFFFFF?text=V' },
 ];
 
 export const categories: LearningCategory[] = [
