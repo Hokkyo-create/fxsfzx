@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Icon from './Icons';
 
-// The previous URL was unreliable and likely blocked by CORS, causing audio playback errors.
-// This new URL points to a royalty-free victory theme from a reliable CDN.
-const MUSIC_URL = 'https://cdn.pixabay.com/download/audio/2022/07/23/audio_770b99726a.mp3';
-const SONG_TITLE = 'Victory Fanfare';
-const ARTIST_NAME = 'LiteSaturation';
+// Switched to a highly reliable Wikimedia Commons source to resolve playback errors.
+// This OGG version of "Gonna Fly Now" has open CORS policies.
+const MUSIC_URL = 'https://upload.wikimedia.org/wikipedia/commons/1/11/Gonna_Fly_Now.ogg';
+const SONG_TITLE = 'Gonna Fly Now (Rocky Theme)';
+const ARTIST_NAME = 'Bill Conti';
 
 
 const MusicPlayer: React.FC = () => {
@@ -24,13 +24,8 @@ const MusicPlayer: React.FC = () => {
         audio.addEventListener('play', handlePlay);
         audio.addEventListener('pause', handlePause);
 
-        // Attempt autoplay on mount
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-            playPromise.then(() => {}).catch(error => {
-                console.log("Autoplay was prevented by the browser:", error);
-            });
-        }
+        // Autoplay is removed to comply with modern browser policies and prevent errors.
+        // The user must initiate the first playback.
 
         return () => {
             audio.removeEventListener('play', handlePlay);
@@ -39,25 +34,36 @@ const MusicPlayer: React.FC = () => {
     }, []);
 
 
-    const togglePlayPause = () => {
-        if (isPlaying) {
-            audioRef.current?.pause();
-        } else {
-            audioRef.current?.play();
-        }
+    const togglePlayPause = async () => {
+        const audio = audioRef.current;
+        if (!audio) return;
 
+        // Display song info when the button is clicked.
         setSongInfoVisible(true);
         if (songInfoTimeoutRef.current) {
             clearTimeout(songInfoTimeoutRef.current);
         }
         songInfoTimeoutRef.current = window.setTimeout(() => {
             setSongInfoVisible(false);
-        }, 3000); // Hide after 3 seconds
+        }, 3000);
+
+        // Added robust error handling for playback.
+        try {
+            if (audio.paused) {
+                await audio.play();
+            } else {
+                audio.pause();
+            }
+        } catch (error) {
+            console.error("Audio playback error:", error);
+            // If play fails, ensure the UI reflects the paused state.
+            setIsPlaying(false);
+        }
     };
 
     return (
         <>
-            <audio ref={audioRef} src={MUSIC_URL} loop />
+            <audio ref={audioRef} src={MUSIC_URL} loop preload="auto" />
             <div className="fixed bottom-4 left-4 sm:left-8 z-50 flex items-end gap-4">
                 <button
                     onClick={togglePlayPause}
