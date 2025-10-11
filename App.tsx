@@ -12,6 +12,7 @@ import ProjectGenerationPage from './components/ProjectGenerationPage';
 import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import ProfileModal from './components/ProfileModal';
+import MusicPlayer from './components/MusicPlayer';
 import { getMeetingChatResponse } from './services/geminiService';
 import {
     setupMessagesListener,
@@ -309,11 +310,13 @@ const App: React.FC = () => {
     };
     
     const showChatbot = currentUser && !showWelcome && !isAdminPanelOpen && !isMeetingOpen && !isProjectsOpen && !selectedProject && !generatingProjectConfig;
+    const showMusicPlayer = currentUser && !showWelcome;
 
     return (
         <>
             {renderContent()}
             {showChatbot && <Chatbot />}
+            {showMusicPlayer && <MusicPlayer />}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
                 <AdminPanel onClose={handleToggleAdminPanel} />
             )}
