@@ -26,23 +26,17 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ user, onFinish }) => {
                     <Icon name="Fire" className="w-28 h-28 text-brand-red animate-glow welcome-fire-icon" />
                 </div>
                 
-                <h1 className="text-7xl md:text-9xl font-display tracking-widest text-white my-4 flex items-center justify-center">
-                    <span 
-                        className="opacity-0 animate-text-reveal" 
-                        style={{ animationDelay: '0.6s' }}
-                    >
+                <h1 
+                    className="text-7xl md:text-9xl font-display tracking-widest text-white my-4 flex items-center justify-center opacity-0 animate-tudum-glitch"
+                    style={{ animationDelay: '0.5s' }}
+                >
+                    <span>
                         ARC
                     </span>
-                    <span 
-                        className="text-brand-red opacity-0 animate-text-reveal" 
-                        style={{ animationDelay: '0.4s' }}
-                    >
+                    <span className="text-brand-red">
                         7
                     </span>
-                    <span 
-                        className="opacity-0 animate-text-reveal" 
-                        style={{ animationDelay: '0.8s' }}
-                    >
+                    <span>
                         HIVE
                     </span>
                 </h1>

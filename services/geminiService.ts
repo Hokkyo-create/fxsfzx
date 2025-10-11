@@ -1,20 +1,8 @@
-import { GoogleGenAI, Type, Chat, GenerateContentResponse } from "@google/genai";
-import type { Video, ChatMessage, AiProvider, MeetingMessage } from '../types';
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import type { Video, ChatMessage, MeetingMessage } from '../types';
 
 // NOTE: Using the user-provided key directly.
 const YOUTUBE_API_KEY = 'AIzaSyAwudima4ZEO18AQtbY4fzgI02_LpziE8A';
-
-/**
- * Retrieves the globally configured API key and provider from local storage.
- */
-const getAiConfig = (): { apiKey: string | null; provider: AiProvider } => {
-    if (typeof window !== 'undefined') {
-        const apiKey = localStorage.getItem('arc7hive_admin_api_key');
-        const provider = (localStorage.getItem('arc7hive_ai_provider') as AiProvider) || 'gemini'; // Default to gemini
-        return { apiKey, provider };
-    }
-    return { apiKey: null, provider: 'gemini' };
-}
 
 const parseYoutubeDuration = (duration: string): string => {
     const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
@@ -130,45 +118,17 @@ Responda de forma conversacional. Comece a primeira interação com uma saudaç�
 `;
 
 export const getChatbotResponse = async (message: string, history: ChatMessage[]): Promise<string> => {
-    const { apiKey, provider } = getAiConfig();
-    if (!apiKey) {
-        return "O chatbot está temporariamente indisponível. Erro: A chave de API não foi configurada. Por favor, adicione sua chave no 'Modo Desenvolvedor' para ativar as funcionalidades de IA.";
-    }
-
     try {
-        if (provider === 'openai') {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json;charset=UTF-8', 'Authorization': `Bearer ${apiKey}`},
-                body: JSON.stringify({
-                    model: 'gpt-4o',
-                    messages: [
-                        { role: 'system', content: systemInstruction },
-                        ...history.map(msg => ({ role: msg.role, content: msg.text })),
-                        { role: 'user', content: message }
-                    ],
-                    temperature: 0.5,
-                })
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`OpenAI: ${errorData.error?.message || 'Erro desconhecido'}`);
-            }
-            const data = await response.json();
-            return data.choices[0]?.message?.content || "Não recebi uma resposta.";
-
-        } else { // Gemini
-            const ai = new GoogleGenAI({ apiKey });
-            const chat = ai.chats.create({
-                model: 'gemini-2.5-flash',
-                config: { systemInstruction },
-                history: history.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }))
-            });
-            const response: GenerateContentResponse = await chat.sendMessage({ message });
-            return response.text;
-        }
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const chat = ai.chats.create({
+            model: 'gemini-2.5-flash',
+            config: { systemInstruction },
+            history: history.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }))
+        });
+        const response: GenerateContentResponse = await chat.sendMessage({ message });
+        return response.text;
     } catch (error) {
-        console.error(`Error getting chatbot response from ${provider}:`, error);
+        console.error(`Error getting chatbot response from Gemini:`, error);
         if (error instanceof Error) return `O chatbot está temporariamente indisponível. Erro: ${error.message}`;
         return "Desculpe, estou com um problema para me conectar. Tente novamente em alguns instantes.";
     }
@@ -183,64 +143,31 @@ Responda sempre em Português do Brasil.
 `;
 
 export const getMeetingChatResponse = async (prompt: string, history: MeetingMessage[]): Promise<string> => {
-    const { apiKey, provider } = getAiConfig();
-    if (!apiKey) {
-        return "A função de IA na reunião está indisponível. A chave de API não foi configurada.";
-    }
-
-    const formattedHistoryForOpenAI = history.map(msg => ({
-        role: msg.user === 'ARC7' ? 'assistant' : 'user',
-        content: `${msg.user}: ${msg.text}`
-    }));
-
     try {
-        if (provider === 'openai') {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json;charset=UTF-8', 'Authorization': `Bearer ${apiKey}`},
-                body: JSON.stringify({
-                    model: 'gpt-4o',
-                    messages: [
-                        { role: 'system', content: meetingSystemInstruction },
-                        ...formattedHistoryForOpenAI.slice(-10),
-                        { role: 'user', content: prompt }
-                    ],
-                    temperature: 0.7,
-                })
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`OpenAI: ${errorData.error?.message || 'Erro desconhecido'}`);
-            }
-            const data = await response.json();
-            return data.choices[0]?.message?.content || "Não recebi uma resposta.";
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-        } else { // Gemini
-            const ai = new GoogleGenAI({ apiKey });
+        const conversationContext = history
+            .slice(-10) 
+            .map(msg => `${msg.user}: ${msg.text}`)
+            .join('\n');
 
-            const conversationContext = history
-                .slice(-10) 
-                .map(msg => `${msg.user}: ${msg.text}`)
-                .join('\n');
+        const fullPrompt = `Aqui está o histórico recente da conversa da equipe:\n\n${conversationContext}\n\nA partir deste contexto, responda à seguinte pergunta direcionada a você (ARC7): "${prompt}"`;
 
-            const fullPrompt = `Aqui está o histórico recente da conversa da equipe:\n\n${conversationContext}\n\nA partir deste contexto, responda à seguinte pergunta direcionada a você (ARC7): "${prompt}"`;
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: fullPrompt,
-                config: { systemInstruction: meetingSystemInstruction },
-            });
-            return response.text;
-        }
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: fullPrompt,
+            config: { systemInstruction: meetingSystemInstruction },
+        });
+        return response.text;
     } catch (error) {
-        console.error(`Error getting meeting response from ${provider}:`, error);
+        console.error(`Error getting meeting response from Gemini:`, error);
         if (error instanceof Error) return `Ocorreu um erro com a IA: ${error.message}`;
         return "Desculpe, a IA encontrou um problema. Tente novamente.";
     }
 };
 
 
-export const generateLiveStyles = async (prompt: string, apiKey: string, provider: AiProvider): Promise<string> => {
+export const generateLiveStyles = async (prompt: string): Promise<string> => {
     const styleGenSystemInstruction = `
     Você é um especialista em CSS que gera código para modificar a aparência de uma aplicação web.
     Sua tarefa é responder a um pedido do usuário e retornar APENAS o código CSS.
@@ -252,45 +179,101 @@ export const generateLiveStyles = async (prompt: string, apiKey: string, provide
     `;
     
     try {
-        let generatedCss = '';
-        if (!apiKey || !apiKey.trim()) throw new Error("A chave de API não foi fornecida no painel.");
-
-        if (provider === 'openai') {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json;charset=UTF-8', 'Authorization': `Bearer ${apiKey}` },
-                body: JSON.stringify({
-                    model: 'gpt-4o',
-                    messages: [ { role: 'system', content: styleGenSystemInstruction }, { role: 'user', content: prompt } ],
-                    temperature: 0.2,
-                })
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`Erro na API da OpenAI: ${errorData.error?.message || 'Verifique sua chave.'}`);
-            }
-            const data = await response.json();
-            generatedCss = data.choices[0]?.message?.content || '';
-
-        } else { // Gemini
-            const aiClient = new GoogleGenAI({ apiKey });
-            const geminiResponse = await aiClient.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: { systemInstruction: styleGenSystemInstruction },
-            });
-            if (!geminiResponse?.text) throw new Error("A IA (Gemini) retornou uma resposta vazia.");
-            generatedCss = geminiResponse.text;
-        }
-
+        const aiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const geminiResponse = await aiClient.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: { systemInstruction: styleGenSystemInstruction },
+        });
+        if (!geminiResponse?.text) throw new Error("A IA (Gemini) retornou uma resposta vazia.");
+        const generatedCss = geminiResponse.text;
+        
         const cssCode = generatedCss.replace(/```css/g, '').replace(/```/g, '').trim();
         if (!cssCode) throw new Error("A IA retornou uma resposta vazia.");
             
         return cssCode;
 
     } catch (error) {
-        console.error(`Error generating live styles with ${provider}:`, error);
+        console.error(`Error generating live styles with Gemini:`, error);
         if (error instanceof Error) throw error;
         throw new Error("A IA não conseguiu gerar os estilos.");
+    }
+};
+
+export async function* generateEbookProjectStream(topic: string, chapters: number): AsyncGenerator<string> {
+    const ebookSystemInstruction = `Você é um autor de ebooks especialista. Sua tarefa é gerar um ebook completo sobre um tópico. A saída DEVE ser em Markdown e seguir esta estrutura RIGOROSAMENTE:
+1.  **Título:** A primeira linha DEVE ser o título, começando com '# '. Exemplo: '# O Guia Completo de Marketing Digital'
+2.  **Introdução:** Comece com a tag '[INTRODUÇÃO]' em uma nova linha, seguida pelo conteúdo da introdução.
+3.  **Capítulos:** Gere exatamente ${chapters} capítulos. Cada um DEVE começar com a tag '[CAPÍTULO X: Título do Capítulo]' em sua própria linha.
+4.  **Conteúdo do Capítulo:** Para cada capítulo, escreva pelo menos 3-4 parágrafos de conteúdo detalhado.
+5.  **Conclusão:** Termine com a tag '[CONCLUSÃO]' em uma nova linha, seguida pelo parágrafo de conclusão.
+Responda APENAS com o conteúdo do ebook. Não inclua nenhuma conversa ou explicação adicional.`;
+
+    const fullPrompt = `Gere um ebook completo sobre o seguinte tópico: "${topic}"`;
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContentStream({
+            model: 'gemini-2.5-flash',
+            contents: fullPrompt,
+            config: { systemInstruction: ebookSystemInstruction },
+        });
+
+        for await (const chunk of response) {
+            yield chunk.text;
+        }
+    } catch (error) {
+        console.error(`Error generating ebook stream with Gemini:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error("A IA não conseguiu gerar o conteúdo do projeto.");
+    }
+};
+
+export const generateImagePromptForText = async (title: string, content: string): Promise<string> => {
+    const promptGenSystemInstruction = `Você é um diretor de arte especializado em criar prompts para IAs de geração de imagem. Sua tarefa é criar um prompt curto, em inglês, para gerar uma imagem. O prompt deve ser descritivo, evocativo e focado nos conceitos principais do texto.
+    **REGRAS:**
+    - O prompt deve ser em INGLÊS.
+    - O prompt deve ter no máximo 30 palavras.
+    - Estilo: 'minimalist vector art, cinematic, dramatic lighting'.
+    - Apenas retorne o texto do prompt, sem nenhuma explicação.`;
+
+    const fullPrompt = `Crie um prompt de imagem para um texto com o título "${title}" e cujo conteúdo fala sobre: "${content.substring(0, 300)}..."`;
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: fullPrompt,
+            config: { systemInstruction: promptGenSystemInstruction },
+        });
+        return response.text.trim();
+    } catch (error) {
+        console.error('Error generating cover prompt:', error);
+        // Fallback prompt
+        return `minimalist vector art of ${title}, cinematic, dramatic lighting`;
+    }
+};
+
+export const generateImage = async (prompt: string): Promise<string> => {
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: prompt,
+            config: {
+                numberOfImages: 1,
+                outputMimeType: 'image/png',
+                aspectRatio: '3:4', // Portrait orientation for a book cover
+            },
+        });
+
+        if (!response.generatedImages?.[0]?.image?.imageBytes) {
+            throw new Error("A API de imagem não retornou dados de imagem.");
+        }
+        return response.generatedImages[0].image.imageBytes;
+    } catch (error) {
+        console.error(`Error generating image with Imagen:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error("A IA não conseguiu gerar a imagem de capa.");
     }
 };

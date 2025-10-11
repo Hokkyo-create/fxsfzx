@@ -3,8 +3,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload';
-export type AiProvider = 'gemini' | 'openai';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download';
 
 export interface User {
   name: string;
@@ -31,6 +30,24 @@ export interface LearningCategory {
   icon: IconName;
   color: 'red' | 'orange' | 'green' | 'cyan' | 'blue' | 'indigo' | 'yellow' | 'rose';
   videos: Video[];
+}
+
+export interface Chapter {
+    title: string;
+    content: string;
+    imageUrl?: string;
+}
+
+export interface Project {
+    id: string;
+    name: string; // Ebook title
+    introduction: string;
+    chapters: Chapter[];
+    conclusion: string;
+    createdBy: string;
+    avatarUrl: string;
+    createdAt: number;
+    coverImageUrl?: string; // URL for the AI-generated cover image
 }
 
 export interface SocialMediaIdea {

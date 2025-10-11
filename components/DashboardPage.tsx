@@ -15,6 +15,7 @@ interface DashboardPageProps {
     categories: LearningCategory[];
     onToggleAdminPanel: () => void;
     onNavigateToMeeting: () => void;
+    onNavigateToProjects: () => void;
     onOpenProfileModal: () => void;
 }
 
@@ -29,6 +30,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     categories,
     onToggleAdminPanel,
     onNavigateToMeeting,
+    onNavigateToProjects,
     onOpenProfileModal,
 }) => {
     return (
@@ -46,6 +48,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                                 <Avatar src={user.avatarUrl} name={user.name} />
                             </button>
                         </div>
+                         <button
+                            onClick={onNavigateToProjects}
+                            className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                            title="Projetos"
+                            aria-label="Abrir área de projetos"
+                        >
+                            <Icon name="BookOpen" className="w-6 h-6" />
+                        </button>
                          <button
                             onClick={onNavigateToMeeting}
                             className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"

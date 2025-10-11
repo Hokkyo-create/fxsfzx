@@ -1,36 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Icon from './Icons';
 import { generateLiveStyles } from '../services/geminiService';
 import { clearMeetingChat } from '../services/firebaseService';
-import type { AiProvider } from '../types';
 
 interface AdminPanelProps {
     onClose: () => void;
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
-    const [apiKey, setApiKey] = useState('');
-    const [aiProvider, setAiProvider] = useState<AiProvider>('gemini');
     const [prompt, setPrompt] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
-
-    useEffect(() => {
-        const storedKey = localStorage.getItem('arc7hive_admin_api_key');
-        if (storedKey) setApiKey(storedKey);
-        
-        const storedProvider = localStorage.getItem('arc7hive_ai_provider') as AiProvider;
-        if (storedProvider) setAiProvider(storedProvider);
-    }, []);
-
-    const handleSaveConfig = () => {
-        localStorage.setItem('arc7hive_admin_api_key', apiKey);
-        localStorage.setItem('arc7hive_ai_provider', aiProvider);
-        setMessage('Configuração de IA salva com sucesso!');
-        setTimeout(() => setMessage(''), 3000);
-        window.location.reload(); // Reload to apply changes across the app
-    };
 
     const applyStyles = (css: string) => {
         const styleId = 'custom-admin-styles';
@@ -53,7 +34,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         setMessage('');
 
         try {
-            const generatedCss = await generateLiveStyles(prompt, apiKey, aiProvider);
+            const generatedCss = await generateLiveStyles(prompt);
             applyStyles(generatedCss);
             localStorage.setItem('arc7hive_custom_styles', generatedCss);
             setMessage('Estilos aplicados com sucesso!');
@@ -97,42 +78,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 
                 {/* Content */}
                 <div className="space-y-6 overflow-y-auto pr-2">
-                    <div>
-                        <label className="text-sm font-medium text-gray-300 block mb-2">Provedor de IA</label>
-                        <div className="flex gap-4 p-1 bg-gray-900/50 rounded-lg">
-                            {(['gemini', 'openai'] as AiProvider[]).map(provider => (
-                                <button
-                                    key={provider}
-                                    onClick={() => setAiProvider(provider)}
-                                    className={`w-full text-center py-2 rounded-md text-sm font-semibold transition-colors ${aiProvider === provider ? 'bg-brand-red text-white' : 'bg-transparent text-gray-300 hover:bg-gray-700'}`}
-                                >
-                                    {provider === 'gemini' ? 'Google Gemini' : 'OpenAI ChatGPT'}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label htmlFor="api-key" className="text-sm font-medium text-gray-300 block mb-2">Sua Chave de API ({aiProvider === 'gemini' ? 'Gemini' : 'OpenAI'})</label>
-                        <input
-                           id="api-key"
-                           type="password"
-                           value={apiKey}
-                           onChange={(e) => setApiKey(e.target.value)}
-                           placeholder="Cole sua chave de API aqui"
-                           className="w-full bg-gray-900 border border-gray-700 rounded-md py-2 px-4 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition"
-                       />
-                        <p className="text-xs text-gray-500 mt-2">Sua chave é salva apenas no seu navegador e nunca é exposta.</p>
-                    </div>
-
-                    <button onClick={handleSaveConfig} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
-                        Salvar Configuração de IA
-                    </button>
-
-                     <div className="border-t border-gray-800 my-6"></div>
-
                      <div>
-                        <label htmlFor="prompt" className="text-sm font-medium text-gray-300 block mb-2">Comando de Estilo (Prompt)</label>
+                        <label htmlFor="prompt" className="text-sm font-medium text-gray-300 block mb-2">Editor de Estilo ao Vivo (com IA)</label>
                         <textarea
                             id="prompt"
                             rows={4}
@@ -149,7 +96,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                     <div className="flex flex-col sm:flex-row gap-4">
                         <button 
                             onClick={handleApplyStyles}
-                            disabled={isLoading || !apiKey}
+                            disabled={isLoading}
                             className="w-full flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105 disabled:bg-gray-600 disabled:scale-100 disabled:cursor-not-allowed"
                         >
                             {isLoading ? (

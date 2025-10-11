@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
-import type { LearningCategory, User, Video, MeetingMessage, OnlineUser } from './types';
+import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project } from './types';
 import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
 import VideoPlayerPage from './components/VideoPlayerPage';
 import MeetingPage from './components/Header';
+import ProjectsPage from './components/ProjectsPage';
+import ProjectViewerPage from './components/ProjectViewerPage';
+import ProjectGenerationPage from './components/ProjectGenerationPage';
 import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import ProfileModal from './components/ProfileModal';
@@ -19,6 +22,11 @@ import {
     updateUserPresence,
     goOffline
 } from './services/firebaseService';
+
+interface ProjectGenerationConfig {
+    topic: string;
+    chapters: number;
+}
 
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -35,6 +43,12 @@ const App: React.FC = () => {
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
     const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
     const [isMeetingAiActive, setIsMeetingAiActive] = useState(true);
+    
+    // Projects state
+    const [isProjectsOpen, setIsProjectsOpen] = useState(false);
+    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [generatingProjectConfig, setGeneratingProjectConfig] = useState<ProjectGenerationConfig | null>(null);
+
 
     useEffect(() => {
         // Apply custom admin styles
@@ -131,14 +145,29 @@ const App: React.FC = () => {
         setWatchedVideos(new Set());
         setIsAdminPanelOpen(false);
         setIsMeetingOpen(false);
+        setIsProjectsOpen(false);
+        setSelectedProject(null);
+        setGeneratingProjectConfig(null);
     };
     
     const handleToggleAdminPanel = () => setIsAdminPanelOpen(prev => !prev);
     
+    // Meeting navigation
     const handleNavigateToMeeting = () => setIsMeetingOpen(true);
-
     const handleBackFromMeeting = () => setIsMeetingOpen(false);
     
+    // Project navigation
+    const handleNavigateToProjects = () => setIsProjectsOpen(true);
+    const handleBackFromProjects = () => {
+        setIsProjectsOpen(false);
+        setGeneratingProjectConfig(null); // Ensure we exit generation mode
+    }
+    const handleSelectProject = (project: Project) => setSelectedProject(project);
+    const handleBackFromProjectViewer = () => setSelectedProject(null);
+    const handleStartProjectGeneration = (topic: string, chapters: number) => setGeneratingProjectConfig({ topic, chapters });
+    const handleFinishProjectGeneration = () => setGeneratingProjectConfig(null);
+
+
     const handleSendMessage = useCallback(async (text: string) => {
         if (!currentUser) return;
 
@@ -216,6 +245,27 @@ const App: React.FC = () => {
             return <WelcomeScreen user={currentUser} onFinish={handleWelcomeFinish} />;
         }
 
+        if (generatingProjectConfig) {
+            return <ProjectGenerationPage 
+                config={generatingProjectConfig}
+                user={currentUser}
+                onFinish={handleFinishProjectGeneration} 
+            />;
+        }
+
+        if (selectedProject) {
+            return <ProjectViewerPage project={selectedProject} onBack={handleBackFromProjectViewer} />;
+        }
+
+        if (isProjectsOpen) {
+            return <ProjectsPage 
+                user={currentUser} 
+                onBack={handleBackFromProjects} 
+                onSelectProject={handleSelectProject} 
+                onStartGeneration={handleStartProjectGeneration}
+            />;
+        }
+
         if (isMeetingOpen) {
             return (
                 <MeetingPage
@@ -257,12 +307,13 @@ const App: React.FC = () => {
                 categories={learningCategories}
                 onToggleAdminPanel={handleToggleAdminPanel}
                 onNavigateToMeeting={handleNavigateToMeeting}
+                onNavigateToProjects={handleNavigateToProjects}
                 onOpenProfileModal={() => setIsProfileModalOpen(true)}
             />
         );
     };
     
-    const showChatbot = currentUser && !showWelcome && !isAdminPanelOpen && !isMeetingOpen;
+    const showChatbot = currentUser && !showWelcome && !isAdminPanelOpen && !isMeetingOpen && !isProjectsOpen && !selectedProject && !generatingProjectConfig;
 
     return (
         <>
