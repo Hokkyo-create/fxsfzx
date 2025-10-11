@@ -1,7 +1,7 @@
 // services/geminiService.ts
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import type { Video, ChatMessage, MeetingMessage, YouTubeTrack } from '../types';
+import type { Video, ChatMessage, MeetingMessage, YouTubeTrack, Project, QuizQuestion, VideoScript } from '../types';
 
 // NOTE: Using the user-provided key directly.
 const YOUTUBE_API_KEY = 'AIzaSyAwudima4ZEO18AQtbY4fzgI02_LpziE8A';
@@ -478,4 +478,152 @@ export const generateImage = async (prompt: string): Promise<string> => {
         // Fallback to the local, reliable canvas-based image generator
         return await generateLocalCanvasImage(prompt);
     }
+};
+
+export const generateVideoScriptAndPrompts = async (
+    project: Project, 
+    style: string, 
+    durationInMinutes: number,
+    voiceStyle: string
+): Promise<VideoScript> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const ebookContent = `Título: ${project.name}\n\nIntrodução: ${project.introduction}\n\n${project.chapters.map((c, i) => `Capítulo ${i+1}: ${c.title}\n${c.content}`).join('\n\n')}\n\nConclusão: ${project.conclusion}`;
+    
+    const styleDescription = {
+        cinematic: "um estilo cinematográfico, com tom sério e visual épico.",
+        viral: "um estilo de vídeo viral para redes sociais, com ritmo rápido, legendas dinâmicas e ganchos fortes.",
+        documentary: "um estilo de documentário, informativo, calmo e com narração clara."
+    }[style];
+
+    const voiceDescription = voiceStyle === 'female' 
+        ? "A narração deve ter um tom energético e claro, em uma voz feminina."
+        : "A narração deve ter um tom calmo e confiante, em uma voz masculina.";
+
+    // Calculate number of scenes. Approx 15-20 seconds per scene. Aim for 4 scenes per minute.
+    const numberOfScenes = Math.max(2, Math.ceil(durationInMinutes * 4));
+
+    const prompt = `Você é um roteirista de vídeos para a internet. Baseado no conteúdo do ebook a seguir, crie um roteiro para um vídeo de aproximadamente ${durationInMinutes} minuto(s).
+    O vídeo deve ter ${styleDescription}.
+    ${voiceDescription}
+
+    **REGRAS ESTRITAS DE SAÍDA:**
+    1.  Divida o roteiro em exatamente ${numberOfScenes} cenas coesas.
+    2.  Para cada cena, escreva uma narração curta em Português do Brasil.
+    3.  Para cada cena, crie um prompt de vídeo descritivo e evocativo em INGLÊS para ser usado em um gerador de vídeo AI (como VEO). O prompt deve refletir o conteúdo da narração daquela cena.
+    4.  Combine todas as narrações de cena em um único roteiro completo para legendas.
+
+    Ebook:
+    ${ebookContent.substring(0, 8000)}`;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    scenes: {
+                        type: Type.ARRAY,
+                        description: `Uma lista de exatamente ${numberOfScenes} objetos de cena.`,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                narration: {
+                                    type: Type.STRING,
+                                    description: "O roteiro da narração para esta cena específica, em português."
+                                },
+                                prompt: {
+                                    type: Type.STRING,
+                                    description: "O prompt de geração de vídeo para esta cena, em INGLÊS."
+                                }
+                            },
+                            required: ["narration", "prompt"]
+                        }
+                    },
+                    fullNarrationScript: { 
+                        type: Type.STRING, 
+                        description: "O roteiro completo da narração do vídeo, combinando todas as narrações de cena." 
+                    }
+                },
+                required: ["scenes", "fullNarrationScript"]
+            }
+        }
+    });
+
+    try {
+        const jsonStr = response.text.trim();
+        const scriptData = JSON.parse(jsonStr);
+        if (scriptData.scenes && Array.isArray(scriptData.scenes) && scriptData.fullNarrationScript) {
+            return scriptData as VideoScript;
+        }
+         throw new Error("Dados do roteiro recebidos em formato inesperado.");
+    } catch (e) {
+        console.error("Falha ao analisar o JSON do roteiro:", e, `Resposta recebida: ${response.text}`);
+        throw new Error("A IA retornou um formato de roteiro inválido. Por favor, tente novamente.");
+    }
+};
+
+
+export const generateEbookVideo = async (videoPrompt: string, aspectRatio: string, style: string): Promise<any> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const finalPrompt = `A video in a ${style} style, aspect ratio ${aspectRatio}. ${videoPrompt}`;
+    
+    // Start video generation
+    const operation = await ai.models.generateVideos({
+        model: 'veo-2.0-generate-001',
+        prompt: finalPrompt,
+        config: {
+            numberOfVideos: 1
+        }
+    });
+    return operation;
+};
+
+export const generateEbookQuiz = async (project: Project): Promise<QuizQuestion[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const ebookContent = `Título: ${project.name}\n\nIntrodução: ${project.introduction}\n\n${project.chapters.map((c, i) => `Capítulo ${i+1}: ${c.title}\n${c.content}`).join('\n\n')}\n\nConclusão: ${project.conclusion}`;
+
+    const prompt = `Baseado no conteúdo do ebook a seguir, crie um quiz com 5 perguntas de múltipla escolha para testar o conhecimento do leitor. Cada pergunta deve ter 4 opções e apenas uma resposta correta. \n\nEbook:\n${ebookContent.substring(0, 8000)}`;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        question: { type: Type.STRING, description: "A pergunta do quiz." },
+                        options: {
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING },
+                            description: "Uma lista com 4 opções de resposta."
+                        },
+                        correctAnswer: { type: Type.STRING, description: "A resposta exata que está correta, que deve ser uma das 4 opções." }
+                    },
+                    required: ["question", "options", "correctAnswer"]
+                }
+            }
+        }
+    });
+
+    try {
+        const jsonStr = response.text.trim();
+        const quizData = JSON.parse(jsonStr);
+        // Basic validation
+        if (Array.isArray(quizData) && quizData.length > 0 && quizData.every(q => q.question && q.options && q.correctAnswer)) {
+            return quizData as QuizQuestion[];
+        }
+    } catch (e) {
+        console.error("Failed to parse quiz JSON:", e);
+        throw new Error("A IA retornou um formato de quiz inválido.");
+    }
+
+    throw new Error("Não foi possível gerar o quiz.");
 };

@@ -5,6 +5,9 @@ import { generateEbookProjectStream, generateImagePromptForText, generateImage }
 import { createProject } from '../services/firebaseService';
 import { downloadProjectAsPdf } from '../utils/pdfGenerator';
 import EditImageModal from './EditImageModal';
+import VideoGenerationModal from './VideoGenerationModal';
+import InteractiveEbookModal from './InteractiveEbookModal';
+
 
 interface ProjectGenerationPageProps {
     config: ProjectGenerationConfig;
@@ -58,6 +61,9 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
     const [isSaving, setIsSaving] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
     const [editingImage, setEditingImage] = useState<{ type: 'cover' | 'chapter'; index: number; } | null>(null);
+
+    const [videoModalProject, setVideoModalProject] = useState<Project | null>(null);
+    const [interactiveModalProject, setInteractiveModalProject] = useState<Project | null>(null);
     
     const contentEndRef = useRef<HTMLDivElement>(null);
     const printableAreaRef = useRef<HTMLDivElement>(null);
@@ -235,6 +241,18 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
         return null;
     }
 
+    const openVideoModal = () => {
+        if (!projectData) return;
+        const tempProject: Project = { ...projectData, id: 'temp', createdBy: user.name, avatarUrl: user.avatarUrl, createdAt: Date.now() };
+        setVideoModalProject(tempProject);
+    };
+
+    const openInteractiveModal = () => {
+        if (!projectData) return;
+        const tempProject: Project = { ...projectData, id: 'temp', createdBy: user.name, avatarUrl: user.avatarUrl, createdAt: Date.now() };
+        setInteractiveModalProject(tempProject);
+    };
+
     return (
         <>
         <div className="min-h-screen bg-darker text-white font-sans flex flex-col animate-fade-in">
@@ -302,11 +320,27 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                     </div>
 
                     {(status === 'completed' || status === 'error') && (
-                        <div className="flex-shrink-0 p-4 border-t border-gray-800 bg-dark/80 backdrop-blur-sm flex flex-col sm:flex-row gap-3">
+                        <div className="flex-shrink-0 p-4 border-t border-gray-800 bg-dark/80 backdrop-blur-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <button
+                                onClick={openVideoModal}
+                                disabled={status === 'error' || !projectData}
+                                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
+                            >
+                                <Icon name="Film" className="w-5 h-5" />
+                                Fazer Vídeo do Ebook
+                            </button>
+                            <button
+                                onClick={openInteractiveModal}
+                                disabled={status === 'error' || !projectData}
+                                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
+                            >
+                                <Icon name="Sparkles" className="w-5 h-5" />
+                                Fazer Ebook Interativo
+                            </button>
                             <button
                                 onClick={handleDownload}
                                 disabled={isDownloading || status === 'error' || !projectData}
-                                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                className="w-full flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
                             >
                                 <Icon name="Download" className="w-5 h-5" />
                                 {isDownloading ? 'Gerando PDF...' : 'Baixar PDF'}
@@ -314,9 +348,10 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                             <button
                                 onClick={handleSaveProject}
                                 disabled={isSaving || status === 'error' || !projectData}
-                                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                className="w-full flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
                             >
-                                {isSaving ? 'Salvando...' : 'Salvar Projeto na Nuvem'}
+                                <Icon name="Upload" className="w-5 h-5" />
+                                {isSaving ? 'Salvando...' : 'Salvar Projeto'}
                             </button>
                         </div>
                     )}
@@ -332,6 +367,20 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                 getInitialPrompt={getPromptForImage}
                 onRegenerate={handleRegenerateImage}
                 onSave={handleSaveImage}
+            />
+        )}
+        {videoModalProject && (
+            <VideoGenerationModal
+                isOpen={!!videoModalProject}
+                onClose={() => setVideoModalProject(null)}
+                project={videoModalProject}
+            />
+        )}
+        {interactiveModalProject && (
+            <InteractiveEbookModal
+                isOpen={!!interactiveModalProject}
+                onClose={() => setInteractiveModalProject(null)}
+                project={interactiveModalProject}
             />
         )}
         </>

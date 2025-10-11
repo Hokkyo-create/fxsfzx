@@ -3,7 +3,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search' | 'Film' | 'Sparkles';
 
 export interface User {
   name: string;
@@ -55,6 +55,23 @@ export interface ProjectGenerationConfig {
     chapters: number;
     generateImages: boolean;
 }
+
+export interface QuizQuestion {
+    question: string;
+    options: string[];
+    correctAnswer: string;
+}
+
+export interface VideoScene {
+    narration: string;
+    prompt: string;
+}
+
+export interface VideoScript {
+    scenes: VideoScene[];
+    fullNarrationScript: string;
+}
+
 
 export interface SocialMediaIdea {
     title: string;

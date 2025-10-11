@@ -4,6 +4,8 @@ import Icon from './Icons';
 import Avatar from './Avatar';
 import { downloadProjectAsPdf } from '../utils/pdfGenerator';
 import EditImageModal from './EditImageModal';
+import VideoGenerationModal from './VideoGenerationModal';
+import InteractiveEbookModal from './InteractiveEbookModal';
 import { generateImagePromptForText, generateImage } from '../services/geminiService';
 import { updateProject } from '../services/firebaseService';
 
@@ -19,6 +21,10 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
     const [editingImage, setEditingImage] = useState<{ type: 'cover' | 'chapter'; index: number; } | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    
+    // State for new modals
+    const [videoModalProject, setVideoModalProject] = useState<Project | null>(null);
+    const [interactiveModalProject, setInteractiveModalProject] = useState<Project | null>(null);
 
     useEffect(() => {
         setEditableProject(project);
@@ -86,7 +92,7 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
         <>
             <div className="min-h-screen bg-darker text-white font-sans flex flex-col animate-fade-in">
                 <header className="bg-dark border-b border-gray-900 sticky top-0 z-20">
-                    <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+                    <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3 min-w-0">
                             <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2 flex-shrink-0">
                                 <Icon name="ChevronLeft" className="w-6 h-6" />
@@ -99,14 +105,15 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
                                 </div>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
                              {hasChanges && (
                                 <button
                                     onClick={handleSaveChanges}
                                     disabled={isSaving}
                                     className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 transition-colors disabled:bg-gray-600"
                                 >
-                                    <span className="text-sm font-semibold">{isSaving ? 'Salvando...' : 'Salvar Alterações'}</span>
+                                    <Icon name="Upload" className="w-4 h-4" />
+                                    <span className="text-sm font-semibold hidden sm:inline">{isSaving ? 'Salvando...' : 'Salvar'}</span>
                                 </button>
                             )}
                             <button 
@@ -115,7 +122,23 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
                                 className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-brand-red hover:bg-red-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
                             >
                                 <Icon name="Download" className="w-4 h-4" />
-                                <span className="text-sm font-semibold">{isDownloading ? 'Baixando...' : 'Baixar PDF'}</span>
+                                <span className="text-sm font-semibold hidden sm:inline">{isDownloading ? 'Baixando...' : 'Baixar PDF'}</span>
+                            </button>
+                            <button
+                                onClick={() => setVideoModalProject(editableProject)}
+                                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 transition-colors"
+                                title="Fazer Vídeo do Ebook"
+                            >
+                                <Icon name="Film" className="w-4 h-4" />
+                                <span className="text-sm font-semibold hidden sm:inline">Vídeo</span>
+                            </button>
+                            <button
+                                onClick={() => setInteractiveModalProject(editableProject)}
+                                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 transition-colors"
+                                title="Fazer Ebook Interativo"
+                            >
+                                <Icon name="Sparkles" className="w-4 h-4" />
+                                <span className="text-sm font-semibold hidden sm:inline">Interativo</span>
                             </button>
                         </div>
                     </div>
@@ -165,6 +188,20 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
                     getInitialPrompt={getPromptForImage}
                     onRegenerate={handleRegenerateImage}
                     onSave={handleSaveImage}
+                />
+            )}
+            {videoModalProject && (
+                <VideoGenerationModal
+                    isOpen={!!videoModalProject}
+                    onClose={() => setVideoModalProject(null)}
+                    project={videoModalProject}
+                />
+            )}
+            {interactiveModalProject && (
+                <InteractiveEbookModal
+                    isOpen={!!interactiveModalProject}
+                    onClose={() => setInteractiveModalProject(null)}
+                    project={interactiveModalProject}
                 />
             )}
         </>
