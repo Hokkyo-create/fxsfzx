@@ -224,11 +224,11 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
             />
             <div id="youtube-player" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
             
-            <div className="fixed bottom-4 left-4 right-4 sm:left-8 sm:right-auto z-50 flex items-end gap-3">
+            <div className="fixed bottom-4 left-4 right-4 sm:left-8 sm:right-auto z-50 flex items-end gap-3 pointer-events-none">
                  <button
                     ref={toggleButtonRef}
                     onClick={togglePlayPause}
-                    className="w-14 h-14 bg-dark/80 backdrop-blur-sm border-2 border-brand-red rounded-full flex items-center justify-center shadow-lg transform transition-all hover:scale-110 hover:shadow-brand-red/30 animate-pop-in flex-shrink-0"
+                    className="w-14 h-14 bg-dark/80 backdrop-blur-sm border-2 border-brand-red rounded-full flex items-center justify-center shadow-lg transform transition-all hover:scale-110 hover:shadow-brand-red/30 animate-pop-in flex-shrink-0 pointer-events-auto"
                     aria-label={isPlaying ? "Pausar" : "Tocar"}
                     title={isPlaying ? "Pausar" : "Tocar"}
                 >
@@ -241,7 +241,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                         bg-dark/90 backdrop-blur-sm border border-gray-700 rounded-lg shadow-lg flex flex-col
                         w-full sm:w-[350px] max-h-[70vh] sm:max-h-[500px]
                         transition-all duration-300 ease-out origin-bottom-left
-                        ${isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}
+                        ${isExpanded ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}
                     `}
                 >
                     {/* New Header */}
