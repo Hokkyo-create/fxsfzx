@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { User, LearningCategory } from '../types';
 import CategoryCard from './CategoryCard';
 import Icon from './Icons';
@@ -17,6 +17,7 @@ interface DashboardPageProps {
     onNavigateToMeeting: () => void;
     onNavigateToProjects: () => void;
     onOpenProfileModal: () => void;
+    installPrompt: Event | null;
 }
 
 const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -32,8 +33,37 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     onNavigateToMeeting,
     onNavigateToProjects,
     onOpenProfileModal,
+    installPrompt,
 }) => {
+    const [showIosInstallMessage, setShowIosInstallMessage] = useState(false);
+    const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+
+    useEffect(() => {
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in window.navigator && (window.navigator as any).standalone);
+        if (isStandalone) {
+            setIsPwaInstalled(true);
+        }
+    }, []);
+
+    const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const canInstall = !isPwaInstalled && (installPrompt || isIos());
+
+    const handleInstallClick = async () => {
+        if (installPrompt) {
+            // @ts-ignore
+            installPrompt.prompt();
+            // @ts-ignore
+            const { outcome } = await installPrompt.userChoice;
+            if (outcome === 'accepted') {
+                setIsPwaInstalled(true);
+            }
+        } else if (isIos()) {
+            setShowIosInstallMessage(true);
+        }
+    };
+
     return (
+        <>
         <div className="min-h-screen bg-transparent text-white font-sans">
             {/* Header */}
             <header className="dashboard-header bg-darker/70 backdrop-blur-lg border-b border-gray-900/50 sticky top-0 z-10">
@@ -41,13 +71,23 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                     <div className="text-2xl font-display tracking-widest text-white">
                         ARC<span className="text-brand-red">7</span>HIVE
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 sm:gap-4">
                         <div className="flex items-center gap-3">
                             <span className="text-gray-300 hidden sm:block">Olá, {user.name}</span>
                             <button onClick={onOpenProfileModal} title="Alterar foto de perfil" className="transition-transform transform hover:scale-110">
                                 <Avatar src={user.avatarUrl} name={user.name} />
                             </button>
                         </div>
+                         {canInstall && (
+                            <button
+                                onClick={handleInstallClick}
+                                className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                                title="Instalar Aplicativo"
+                                aria-label="Instalar Aplicativo"
+                            >
+                                <Icon name="Download" className="w-6 h-6" />
+                            </button>
+                         )}
                          <button
                             onClick={onNavigateToProjects}
                             className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
@@ -146,6 +186,23 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                 </section>
             </main>
         </div>
+        {showIosInstallMessage && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowIosInstallMessage(false)}>
+                <div className="bg-dark border border-gray-800 rounded-lg shadow-2xl w-full max-w-sm mx-4 p-6 text-center" onClick={e => e.stopPropagation()}>
+                    <h3 className="text-xl font-display tracking-wider text-white mb-4">Instalar no iPhone</h3>
+                    <p className="text-gray-300 mb-4">
+                        Para instalar, toque no ícone de Compartilhar <Icon name="Share" className="w-5 h-5 inline-block -mt-1 mx-1" /> na barra de ferramentas do Safari.
+                    </p>
+                    <p className="text-gray-300">
+                        Depois, role para baixo e selecione <span className="font-bold">"Adicionar à Tela de Início"</span>.
+                    </p>
+                    <button onClick={() => setShowIosInstallMessage(false)} className="w-full mt-6 bg-brand-red hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
+                        Entendi
+                    </button>
+                </div>
+            </div>
+        )}
+        </>
     );
 };
 

@@ -329,6 +329,7 @@ const App: React.FC = () => {
                 onNavigateToMeeting={handleNavigateToMeeting}
                 onNavigateToProjects={handleNavigateToProjects}
                 onOpenProfileModal={() => setIsProfileModalOpen(true)}
+                installPrompt={installPrompt}
             />
         );
     };
@@ -350,7 +351,6 @@ const App: React.FC = () => {
                     onClose={() => setIsProfileModalOpen(false)}
                     currentAvatar={currentUser.avatarUrl}
                     onSave={handleUpdateAvatar}
-                    installPrompt={installPrompt}
                 />
             )}
         </>

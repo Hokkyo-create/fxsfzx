@@ -1,5 +1,5 @@
 // components/ProfileModal.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Icon from './Icons';
 
 interface ProfileModalProps {
@@ -7,24 +7,12 @@ interface ProfileModalProps {
     onClose: () => void;
     currentAvatar: string;
     onSave: (newAvatarUrl: string) => void;
-    installPrompt: Event | null;
 }
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, currentAvatar, onSave, installPrompt }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, currentAvatar, onSave }) => {
     const [preview, setPreview] = useState<string | null>(null);
     const [error, setError] = useState('');
-    const [showIosInstallMessage, setShowIosInstallMessage] = useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
-        // @ts-ignore: 'standalone' is a non-standard property on navigator for PWA detection
-        const isInStandaloneMode = () => 'standalone' in window.navigator && window.navigator.standalone;
-        
-        if (isIos() && !isInStandaloneMode()) {
-            setShowIosInstallMessage(true);
-        }
-    }, []);
 
     if (!isOpen) return null;
 
@@ -56,17 +44,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, currentAva
         setPreview(null);
         setError('');
         onClose();
-    };
-
-    const handleInstallClick = async () => {
-        if (!installPrompt) return;
-        // @ts-ignore: The 'prompt' method exists on the event from 'beforeinstallprompt'
-        installPrompt.prompt();
-        // @ts-ignore: The 'userChoice' property exists on the event
-        const { outcome } = await installPrompt.userChoice;
-        console.log(`User response to the install prompt: ${outcome}`);
-        // The prompt can only be used once.
-        onClose(); 
     };
 
     return (
@@ -105,24 +82,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, currentAva
                     >
                         Salvar
                     </button>
-                </div>
-
-                {/* PWA Install Button */}
-                <div className="mt-6 pt-6 border-t border-gray-700 w-full">
-                    {installPrompt && (
-                        <button
-                            onClick={handleInstallClick}
-                            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md transition-colors"
-                        >
-                            <Icon name="Download" className="w-5 h-5" />
-                            Instalar Aplicativo
-                        </button>
-                    )}
-                    {showIosInstallMessage && !installPrompt && (
-                        <div className="text-center text-sm text-gray-400 p-3 bg-gray-800/50 rounded-md">
-                            Para instalar no iPhone, toque no ícone de Compartilhar <Icon name="Share" className="w-4 h-4 inline-block -mt-1" /> e selecione "Adicionar à Tela de Início".
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
