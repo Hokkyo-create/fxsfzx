@@ -1,6 +1,6 @@
 // services/geminiService.ts
 
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import type { Video, ChatMessage, MeetingMessage } from '../types';
 
 // NOTE: Using the user-provided key directly.
@@ -256,6 +256,51 @@ export const generateImagePromptForText = async (title: string, content: string)
     }
 };
 
+export const generatePromptIdeas = async (basePrompt: string): Promise<string[]> => {
+    const promptGenSystemInstruction = `You are a creative assistant for AI image generation. Your task is to generate 3 diverse and more descriptive alternative prompts based on a user's initial idea.
+    **RULES:**
+    - All prompts must be in ENGLISH.
+    - Each prompt should be a creative, detailed variation of the original idea.
+    - Return ONLY a JSON array of strings. Do not include any other text or explanations.`;
+
+    const fullPrompt = `Based on the idea "${basePrompt}", generate 3 alternative image prompts.`;
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: fullPrompt,
+            config: {
+                systemInstruction: promptGenSystemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.STRING,
+                        description: 'A creative and descriptive image prompt in English.'
+                    }
+                }
+            },
+        });
+
+        const jsonStr = response.text.trim();
+        const ideas = JSON.parse(jsonStr);
+        if (Array.isArray(ideas) && ideas.every(i => typeof i === 'string')) {
+            return ideas;
+        }
+        throw new Error("Invalid format received from AI.");
+    } catch (error) {
+        console.error('Error generating prompt ideas:', error);
+        // Fallback ideas
+        return [
+            `${basePrompt}, cinematic lighting, high detail`,
+            `a minimalist vector art of ${basePrompt}`,
+            `dramatic oil painting of ${basePrompt}, trending on artstation`,
+        ];
+    }
+};
+
+
 // Fallback function to generate a local canvas image if the network request fails
 const generateLocalCanvasImage = async (prompt: string): Promise<string> => {
     await document.fonts.ready; // Wait for custom fonts to be loaded.
@@ -346,7 +391,7 @@ export const generateImage = async (prompt: string): Promise<string> => {
     // Use Pollinations.ai for image generation with specific dimensions.
     const encodedPrompt = encodeURIComponent(prompt);
     const width = 600;
-    const height = 800;
+    const height = 800; // Original requested height
     const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}`;
 
     try {
@@ -359,36 +404,39 @@ export const generateImage = async (prompt: string): Promise<string> => {
             throw new Error('Response from Pollinations.ai was not a valid image.');
         }
         
-        // Load image blob into an ImageBitmap to draw on canvas
         const imageBitmap = await createImageBitmap(blob);
         
+        // Watermark Removal: Crop the bottom of the image where the watermark appears.
+        const cropAmount = 80; // Pixels to crop from the bottom. Increased from 50.
+        const croppedHeight = height - cropAmount;
+
         const canvas = document.createElement('canvas');
         canvas.width = width;
-        canvas.height = height;
+        canvas.height = croppedHeight; // Set canvas to the new, shorter height.
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-            throw new Error("Could not get canvas context to remove watermark.");
+            throw new Error("Could not get canvas context to crop image.");
         }
 
-        // Draw the original image
-        ctx.drawImage(imageBitmap, 0, 0);
-        
-        // Define the approximate watermark area (bottom-right corner) and cover it
-        const watermarkHeight = 25;
-        const watermarkWidth = 130;
-        const x = width - watermarkWidth;
-        const y = height - watermarkHeight;
-
-        // Cover with a dark color from the app's theme to hide the watermark
-        ctx.fillStyle = '#0A0A0A'; // bg-darker
-        ctx.fillRect(x, y, watermarkWidth, watermarkHeight);
+        // Draw the original image onto the smaller canvas, effectively cropping the bottom part.
+        ctx.drawImage(
+            imageBitmap,
+            0, // source X
+            0, // source Y
+            width, // source width
+            croppedHeight, // source height (this defines the crop area)
+            0, // destination X
+            0, // destination Y
+            width, // destination width
+            croppedHeight // destination height
+        );
 
         // Convert the modified canvas back to a base64 string
         const dataUrl = canvas.toDataURL('image/png');
         const base64data = dataUrl.split(',')[1];
         
         if (!base64data) {
-            throw new Error("Failed to convert canvas to PNG base64 after removing watermark.");
+            throw new Error("Failed to convert canvas to PNG base64 after cropping.");
         }
         
         return base64data;

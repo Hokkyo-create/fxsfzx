@@ -2,54 +2,34 @@
 
 // Declare external libraries for TypeScript
 declare const jspdf: any;
-declare const html2canvas: any;
 
 export const downloadProjectAsPdf = async (element: HTMLElement, projectName: string): Promise<void> => {
     try {
         const { jsPDF } = jspdf;
         
-        const canvas = await html2canvas(element, {
-            scale: 2, // Higher scale for better quality
-            backgroundColor: '#0A0A0A',
-            useCORS: true,
-            // Ensure html2canvas captures the entire scrollable height
-            height: element.scrollHeight,
-            windowHeight: element.scrollHeight
-        });
-
-        const imgData = canvas.toDataURL('image/png');
-        const imgWidth = canvas.width;
-        const imgHeight = canvas.height;
-
         const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'pt',
             format: 'a4'
         });
 
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
+        // The .html() method is a more robust way to generate PDFs from HTML.
+        // It uses html2canvas internally but provides better control over paging.
+        await pdf.html(element, {
+            callback: function (doc: any) {
+                doc.save(`${projectName.replace(/ /g, '_')}.pdf`);
+            },
+            html2canvas: {
+                scale: 2, // Higher resolution for crisp text and images
+                backgroundColor: '#0A0A0A',
+                useCORS: true,
+            },
+            autoPaging: 'text', // This is key: it avoids cutting text lines in half
+            margin: [50, 40, 50, 40], // Generous margins: Top, Left, Bottom, Right
+            width: 595 - 80, // A4 width in points (595.28) minus left/right margins
+            windowWidth: 800, // Use a consistent width for rendering to avoid layout shifts
+        });
 
-        // Calculate the aspect ratio to fit the image width to the PDF width
-        const ratio = pdfWidth / imgWidth;
-        const canvasHeightInPdf = imgHeight * ratio;
-        
-        let position = 0;
-        let heightLeft = canvasHeightInPdf;
-
-        // Add the first page
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, canvasHeightInPdf);
-        heightLeft -= pdfHeight;
-
-        // Add subsequent pages if the content is taller than one page
-        while (heightLeft > 0) {
-            position -= pdfHeight; // Move the position up for the next slice
-            pdf.addPage();
-            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, canvasHeightInPdf);
-            heightLeft -= pdfHeight;
-        }
-
-        pdf.save(`${projectName.replace(/ /g, '_')}.pdf`);
     } catch (error) {
         console.error("Failed to generate PDF:", error);
         alert("Ocorreu um erro ao gerar o PDF. Verifique o console para mais detalhes.");
