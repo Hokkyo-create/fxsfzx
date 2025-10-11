@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { User, Project, Chapter } from '../types';
+import type { User, Project, Chapter, ProjectGenerationConfig } from '../types';
 import Icon from './Icons';
 import { generateEbookProjectStream, generateImagePromptForText, generateImage } from '../services/geminiService';
 import { createProject } from '../services/firebaseService';
 import { downloadProjectAsPdf } from '../utils/pdfGenerator';
 import EditImageModal from './EditImageModal';
-
-interface ProjectGenerationConfig {
-    topic: string;
-    chapters: number;
-}
 
 interface ProjectGenerationPageProps {
     config: ProjectGenerationConfig;
@@ -86,36 +81,41 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                 const parsedData = parseEbookContent(fullText, config.topic);
                 setProjectData(parsedData);
 
-                // Stage 3: Generate Images
-                setStatus('generating-images');
-                const totalImages = parsedData.chapters.length + 1; // chapters + cover
-                setImageGenerationProgress({ current: 0, total: totalImages });
+                // Stage 3: Generate Images (optional)
+                if (config.generateImages) {
+                    setStatus('generating-images');
+                    const totalImages = parsedData.chapters.length + 1; // chapters + cover
+                    setImageGenerationProgress({ current: 0, total: totalImages });
 
-                // Generate Cover Image
-                setStatusMessage(`Gerando capa... (1/${totalImages})`);
-                const coverPrompt = await generateImagePromptForText(parsedData.name, parsedData.introduction);
-                const coverImageBase64 = await generateImage(coverPrompt);
-                const coverImageUrl = `data:image/png;base64,${coverImageBase64}`;
-                setProjectData(prev => prev ? { ...prev, coverImageUrl } : null);
-                setImageGenerationProgress({ current: 1, total: totalImages });
+                    // Generate Cover Image
+                    setStatusMessage(`Gerando capa... (1/${totalImages})`);
+                    const coverPrompt = await generateImagePromptForText(parsedData.name, parsedData.introduction);
+                    const coverImageBase64 = await generateImage(coverPrompt);
+                    const coverImageUrl = `data:image/png;base64,${coverImageBase64}`;
+                    setProjectData(prev => prev ? { ...prev, coverImageUrl } : null);
+                    setImageGenerationProgress({ current: 1, total: totalImages });
 
-                // Generate Chapter Images
-                const updatedChapters: Chapter[] = [...parsedData.chapters];
-                for (let i = 0; i < parsedData.chapters.length; i++) {
-                    const chapter = parsedData.chapters[i];
-                    setStatusMessage(`Gerando imagem para o Capítulo ${i + 1}... (${i + 2}/${totalImages})`);
-                    const prompt = await generateImagePromptForText(chapter.title, chapter.content);
-                    const imageBase64 = await generateImage(prompt);
-                    updatedChapters[i].imageUrl = `data:image/png;base64,${imageBase64}`;
-                    setProjectData(prev => prev ? { ...prev, chapters: [...updatedChapters] } : null);
-                    setImageGenerationProgress({ current: i + 2, total: totalImages });
+                    // Generate Chapter Images
+                    const updatedChapters: Chapter[] = [...parsedData.chapters];
+                    for (let i = 0; i < parsedData.chapters.length; i++) {
+                        const chapter = parsedData.chapters[i];
+                        setStatusMessage(`Gerando imagem para o Capítulo ${i + 1}... (${i + 2}/${totalImages})`);
+                        const prompt = await generateImagePromptForText(chapter.title, chapter.content);
+                        const imageBase64 = await generateImage(prompt);
+                        updatedChapters[i].imageUrl = `data:image/png;base64,${imageBase64}`;
+                        setProjectData(prev => prev ? { ...prev, chapters: [...updatedChapters] } : null);
+                        setImageGenerationProgress({ current: i + 2, total: totalImages });
+                    }
                 }
                 
                 setStatus('completed');
                 setStatusMessage('Geração concluída!');
 
             } catch (err) {
-                const errorMessage = err instanceof Error ? err.message : "Ocorreu um erro desconhecido.";
+                let errorMessage = err instanceof Error ? err.message : "Ocorreu um erro desconhecido.";
+                if (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes('quota')) {
+                    errorMessage = "A cota de uso da API foi excedida. Tente novamente mais tarde ou crie um projeto com menos capítulos/imagens.";
+                }
                 setError(errorMessage);
                 setStatus('error');
                 setStatusMessage('Erro na geração');
@@ -297,24 +297,24 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                 <main className="md:w-2/3 lg:w-3/4 bg-dark/50 border border-gray-800 rounded-lg h-full flex flex-col">
                     <div className="flex-grow p-1 md:p-2 overflow-y-auto">
                         {renderContent()}
-                        {status === 'error' && <p className="text-red-400 mt-4 p-8">Erro: {error}</p>}
+                        {status === 'error' && <div className="p-8 text-center text-red-400 bg-red-900/20 rounded-lg m-4 border border-red-500/30">{error}</div>}
                         <div ref={contentEndRef}></div>
                     </div>
 
-                    {status === 'completed' && (
+                    {(status === 'completed' || status === 'error') && (
                         <div className="flex-shrink-0 p-4 border-t border-gray-800 bg-dark/80 backdrop-blur-sm flex flex-col sm:flex-row gap-3">
                             <button
                                 onClick={handleDownload}
-                                disabled={isDownloading}
-                                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:bg-gray-600"
+                                disabled={isDownloading || status === 'error' || !projectData}
+                                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
                             >
                                 <Icon name="Download" className="w-5 h-5" />
                                 {isDownloading ? 'Gerando PDF...' : 'Baixar PDF'}
                             </button>
                             <button
                                 onClick={handleSaveProject}
-                                disabled={isSaving}
-                                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                disabled={isSaving || status === 'error' || !projectData}
+                                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
                             >
                                 {isSaving ? 'Salvando...' : 'Salvar Projeto na Nuvem'}
                             </button>

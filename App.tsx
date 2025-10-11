@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
-import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project } from './types';
+import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig } from './types';
 import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
@@ -22,11 +22,6 @@ import {
     updateUserPresence,
     goOffline
 } from './services/firebaseService';
-
-interface ProjectGenerationConfig {
-    topic: string;
-    chapters: number;
-}
 
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -164,7 +159,7 @@ const App: React.FC = () => {
     }
     const handleSelectProject = (project: Project) => setSelectedProject(project);
     const handleBackFromProjectViewer = () => setSelectedProject(null);
-    const handleStartProjectGeneration = (topic: string, chapters: number) => setGeneratingProjectConfig({ topic, chapters });
+    const handleStartProjectGeneration = (config: ProjectGenerationConfig) => setGeneratingProjectConfig(config);
     const handleFinishProjectGeneration = () => setGeneratingProjectConfig(null);
 
 

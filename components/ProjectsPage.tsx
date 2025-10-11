@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { User, Project } from '../types';
+import type { User, Project, ProjectGenerationConfig } from '../types';
 import Icon from './Icons';
 import ProjectCard from './ProjectCard';
 import CreateProjectModal from './CreateProjectModal';
@@ -10,7 +10,7 @@ interface ProjectsPageProps {
     user: User;
     onBack: () => void;
     onSelectProject: (project: Project) => void;
-    onStartGeneration: (topic: string, chapters: number) => void;
+    onStartGeneration: (config: ProjectGenerationConfig) => void;
 }
 
 const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, onBack, onSelectProject, onStartGeneration }) => {
@@ -22,9 +22,9 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, onBack, onSelectProje
         return () => unsubscribe();
     }, []);
     
-    const handleStart = (topic: string, chapters: number) => {
+    const handleStart = (config: ProjectGenerationConfig) => {
         setIsModalOpen(false);
-        onStartGeneration(topic, chapters);
+        onStartGeneration(config);
     }
 
     return (

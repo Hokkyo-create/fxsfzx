@@ -3,7 +3,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil';
 
 export interface User {
   name: string;
@@ -48,6 +48,12 @@ export interface Project {
     avatarUrl: string;
     createdAt: number;
     coverImageUrl?: string; // URL for the AI-generated cover image
+}
+
+export interface ProjectGenerationConfig {
+    topic: string;
+    chapters: number;
+    generateImages: boolean;
 }
 
 export interface SocialMediaIdea {

@@ -1,3 +1,5 @@
+// services/geminiService.ts
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import type { Video, ChatMessage, MeetingMessage } from '../types';
 
@@ -254,26 +256,146 @@ export const generateImagePromptForText = async (title: string, content: string)
     }
 };
 
-export const generateImage = async (prompt: string): Promise<string> => {
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt: prompt,
-            config: {
-                numberOfImages: 1,
-                outputMimeType: 'image/png',
-                aspectRatio: '3:4', // Portrait orientation for a book cover
-            },
-        });
+// Fallback function to generate a local canvas image if the network request fails
+const generateLocalCanvasImage = async (prompt: string): Promise<string> => {
+    await document.fonts.ready; // Wait for custom fonts to be loaded.
 
-        if (!response.generatedImages?.[0]?.image?.imageBytes) {
-            throw new Error("A API de imagem não retornou dados de imagem.");
+    const canvas = document.createElement('canvas');
+    const width = 600;
+    const height = 800;
+    canvas.width = width;
+    canvas.height = height;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error("Could not get canvas context.");
+
+    // Create an abstract gradient background
+    const color1 = '#E50914'; // Brand red
+    const color2 = '#141414'; // Dark
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, color1);
+    gradient.addColorStop(1, color2);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    // Add subtle noise texture
+    for (let i = 0; i < 10000; i++) {
+        const x = Math.random() * width;
+        const y = Math.random() * height;
+        const alpha = Math.random() * 0.1;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.fillRect(x, y, 1, 1);
+    }
+    
+    // Prepare and draw the main text
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetX = 4;
+    ctx.shadowOffsetY = 4;
+    ctx.font = 'bold 50px "Bebas Neue", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    const text = prompt
+        .replace(/minimalist vector art|cinematic|dramatic lighting/gi, '')
+        .replace(/,/g, ' ')
+        .replace(/of|a|an|the/gi, ' ')
+        .trim();
+    
+    const words = text.split(/\s+/);
+    const maxWidth = width - 100;
+    let line = '';
+    const lines = [];
+
+    for (const word of words) {
+        const testLine = line + word + ' ';
+        const metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && line.length > 0) {
+            lines.push(line.trim());
+            line = word + ' ';
+        } else {
+            line = testLine;
         }
-        return response.generatedImages[0].image.imageBytes;
+    }
+    lines.push(line.trim());
+
+    const lineHeight = 60;
+    const displayLines = lines.slice(0, 6); // Limit to 6 lines
+    const startY = (height / 2) - ((displayLines.length - 1) * lineHeight) / 2;
+
+    displayLines.forEach((l, i) => {
+        ctx.fillText(l.toUpperCase(), width / 2, startY + i * lineHeight);
+    });
+    
+    ctx.shadowColor = 'transparent';
+
+    // Add a footer
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = '18px "Inter", sans-serif';
+    ctx.fillText('ARC7HIVE AI GENERATED', width / 2, height - 50);
+
+    const pngDataUrl = canvas.toDataURL('image/png');
+    const base64data = pngDataUrl.split(',')[1];
+    
+    if (!base64data) throw new Error("Failed to convert canvas to PNG base64.");
+    return base64data;
+};
+
+export const generateImage = async (prompt: string): Promise<string> => {
+    // Use Pollinations.ai for image generation with specific dimensions.
+    const encodedPrompt = encodeURIComponent(prompt);
+    const width = 600;
+    const height = 800;
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}`;
+
+    try {
+        const response = await fetch(pollinationsUrl);
+        if (!response.ok) {
+            throw new Error(`Pollinations.ai returned an error: ${response.statusText}`);
+        }
+        const blob = await response.blob();
+        if (!blob.type.startsWith('image/')) {
+            throw new Error('Response from Pollinations.ai was not a valid image.');
+        }
+        
+        // Load image blob into an ImageBitmap to draw on canvas
+        const imageBitmap = await createImageBitmap(blob);
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            throw new Error("Could not get canvas context to remove watermark.");
+        }
+
+        // Draw the original image
+        ctx.drawImage(imageBitmap, 0, 0);
+        
+        // Define the approximate watermark area (bottom-right corner) and cover it
+        const watermarkHeight = 25;
+        const watermarkWidth = 130;
+        const x = width - watermarkWidth;
+        const y = height - watermarkHeight;
+
+        // Cover with a dark color from the app's theme to hide the watermark
+        ctx.fillStyle = '#0A0A0A'; // bg-darker
+        ctx.fillRect(x, y, watermarkWidth, watermarkHeight);
+
+        // Convert the modified canvas back to a base64 string
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64data = dataUrl.split(',')[1];
+        
+        if (!base64data) {
+            throw new Error("Failed to convert canvas to PNG base64 after removing watermark.");
+        }
+        
+        return base64data;
+
     } catch (error) {
-        console.error(`Error generating image with Imagen:`, error);
-        if (error instanceof Error) throw error;
-        throw new Error("A IA não conseguiu gerar a imagem de capa.");
+        console.warn('Error processing image from Pollinations.ai, falling back to local canvas:', error);
+        // Fallback to the local, reliable canvas-based image generator
+        return await generateLocalCanvasImage(prompt);
     }
 };

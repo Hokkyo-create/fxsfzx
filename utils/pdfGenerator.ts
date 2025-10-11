@@ -7,22 +7,20 @@ declare const html2canvas: any;
 export const downloadProjectAsPdf = async (element: HTMLElement, projectName: string): Promise<void> => {
     try {
         const { jsPDF } = jspdf;
-        // The element for html2canvas should be the one that actually scrolls
-        const container = element.parentElement;
-        if(!container) throw new Error("Printable area container not found");
         
         const canvas = await html2canvas(element, {
-            scale: 2,
+            scale: 2, // Higher scale for better quality
             backgroundColor: '#0A0A0A',
             useCORS: true,
-            // Use the full scroll height of the element
+            // Ensure html2canvas captures the entire scrollable height
             height: element.scrollHeight,
-            width: element.scrollWidth,
-            windowHeight: element.scrollHeight,
-            windowWidth: element.scrollWidth
+            windowHeight: element.scrollHeight
         });
 
         const imgData = canvas.toDataURL('image/png');
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
+
         const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'pt',
@@ -31,21 +29,24 @@ export const downloadProjectAsPdf = async (element: HTMLElement, projectName: st
 
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
-        const imgWidth = canvas.width;
-        const imgHeight = canvas.height;
-        const ratio = imgWidth / pdfWidth;
-        const totalPdfPages = Math.ceil(imgHeight / (pdfHeight * ratio));
+
+        // Calculate the aspect ratio to fit the image width to the PDF width
+        const ratio = pdfWidth / imgWidth;
+        const canvasHeightInPdf = imgHeight * ratio;
         
-        let heightLeft = imgHeight;
         let position = 0;
+        let heightLeft = canvasHeightInPdf;
 
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight / ratio);
-        heightLeft -= (pdfHeight * ratio);
+        // Add the first page
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, canvasHeightInPdf);
+        heightLeft -= pdfHeight;
 
-        for (let i = 1; i < totalPdfPages; i++) {
-            position = -pdfHeight * i;
+        // Add subsequent pages if the content is taller than one page
+        while (heightLeft > 0) {
+            position -= pdfHeight; // Move the position up for the next slice
             pdf.addPage();
-            pdf.addImage(imgData, 'PNG', 0, position / ratio, pdfWidth, imgHeight / ratio);
+            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, canvasHeightInPdf);
+            heightLeft -= pdfHeight;
         }
 
         pdf.save(`${projectName.replace(/ /g, '_')}.pdf`);
