@@ -222,10 +222,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
             />
             <div id="youtube-player" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
             
-            <div className="fixed bottom-4 left-4 sm:left-8 z-50 flex items-end gap-3">
+            <div className="fixed bottom-4 left-4 right-4 sm:left-8 sm:right-auto z-50 flex items-end gap-3">
                  <button
                     onClick={togglePlayPause}
-                    className="w-14 h-14 bg-dark/80 backdrop-blur-sm border-2 border-brand-red rounded-full flex items-center justify-center shadow-lg transform transition-all hover:scale-110 hover:shadow-brand-red/30 animate-pop-in"
+                    className="w-14 h-14 bg-dark/80 backdrop-blur-sm border-2 border-brand-red rounded-full flex items-center justify-center shadow-lg transform transition-all hover:scale-110 hover:shadow-brand-red/30 animate-pop-in flex-shrink-0"
                     aria-label={isPlaying ? "Pausar" : "Tocar"}
                     title={isPlaying ? "Pausar" : "Tocar"}
                 >
@@ -235,7 +235,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                  <div 
                     className={`
                         bg-dark/90 backdrop-blur-sm border border-gray-700 rounded-lg shadow-lg flex flex-col
-                        w-[calc(100vw-3rem)] max-w-sm sm:w-[350px] max-h-[70vh] sm:max-h-[500px]
+                        w-full sm:w-[350px] max-h-[70vh] sm:max-h-[500px]
                         transition-all duration-300 ease-out origin-bottom-left
                         ${isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}
                     `}
@@ -274,7 +274,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                                 <button onClick={toNextTrack} disabled={mode !== 'playlist'} className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-30"><Icon name="SkipForward" className="w-5 h-5"/></button>
                             </div>
                         </div>
-                        <button onClick={() => setIsExpanded(false)} className="absolute top-1 right-1 w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center border-2 border-dark hover:bg-brand-red">
+                        <button onClick={() => setIsExpanded(false)} className="absolute top-2 right-2 w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center border-2 border-dark hover:bg-brand-red">
                             <Icon name="X" className="w-3 h-3" />
                         </button>
                     </div>
