@@ -245,14 +245,12 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                     `}
                 >
                     {/* New Header */}
-                    <div className="flex-shrink-0 flex items-center justify-between p-2 border-b border-gray-700">
-                        <div className="flex">
-                            <button onClick={() => switchMode('playlist')} className={`px-3 py-1.5 text-sm font-semibold transition-colors ${mode === 'playlist' ? 'text-brand-red border-b-2 border-brand-red' : 'text-gray-400 hover:text-white'}`}>Rádio ARC7HIVE</button>
-                            <button onClick={() => switchMode('youtube')} className={`px-3 py-1.5 text-sm font-semibold transition-colors ${mode === 'youtube' ? 'text-brand-red border-b-2 border-brand-red' : 'text-gray-400 hover:text-white'}`}>Buscar no YouTube</button>
-                        </div>
-                        <button onClick={() => setIsExpanded(false)} className="p-2 rounded-full text-gray-400 hover:bg-gray-800 transition-colors">
+                    <div className="flex-shrink-0 flex items-center p-2 border-b border-gray-700">
+                        <button onClick={() => switchMode('playlist')} className={`px-3 py-1.5 text-sm font-semibold transition-colors ${mode === 'playlist' ? 'text-brand-red border-b-2 border-brand-red' : 'text-gray-400 hover:text-white'}`}>Rádio ARC7HIVE</button>
+                        <button onClick={() => setIsExpanded(false)} className="p-2 mx-2 rounded-full text-gray-400 hover:bg-gray-800 transition-colors">
                             <Icon name="X" className="w-5 h-5" />
                         </button>
+                        <button onClick={() => switchMode('youtube')} className={`px-3 py-1.5 text-sm font-semibold transition-colors ${mode === 'youtube' ? 'text-brand-red border-b-2 border-brand-red' : 'text-gray-400 hover:text-white'}`}>Buscar no YouTube</button>
                     </div>
 
                     {/* Player Info Section */}

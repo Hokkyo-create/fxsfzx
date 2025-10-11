@@ -36,27 +36,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     installPrompt,
 }) => {
     const [showIosInstallMessage, setShowIosInstallMessage] = useState(false);
-    const [isPwaInstalled, setIsPwaInstalled] = useState(false);
 
-    useEffect(() => {
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in window.navigator && (window.navigator as any).standalone);
-        if (isStandalone) {
-            setIsPwaInstalled(true);
-        }
-    }, []);
-
-    const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const canInstall = !isPwaInstalled && (installPrompt || isIos());
+    const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window.navigator as any).standalone;
+    
+    // The button should be shown if an install prompt is available OR if the user is on iOS
+    const canInstall = installPrompt || isIos();
 
     const handleInstallClick = async () => {
         if (installPrompt) {
             // @ts-ignore
             installPrompt.prompt();
-            // @ts-ignore
-            const { outcome } = await installPrompt.userChoice;
-            if (outcome === 'accepted') {
-                setIsPwaInstalled(true);
-            }
         } else if (isIos()) {
             setShowIosInstallMessage(true);
         }
