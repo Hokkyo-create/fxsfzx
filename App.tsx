@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
 import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Song } from './types';
@@ -13,7 +14,7 @@ import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import ProfileModal from './components/ProfileModal';
 import MusicPlayer from './components/MusicPlayer';
-import { getMeetingChatResponse } from './services/geminiService';
+import { getMeetingChatResponse, enableSimulationMode as enableGeminiSimulationMode } from './services/geminiService';
 import {
     setupMessagesListener,
     setupTypingListener,
@@ -24,6 +25,7 @@ import {
     goOffline,
     setupPlaylistListener
 } from './services/firebaseService';
+import Icon from './components/Icons';
 
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -36,6 +38,7 @@ const App: React.FC = () => {
     
     // PWA Install Prompt
     const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+    const [isSimulationMode, setIsSimulationMode] = useState(false);
 
     // Meeting state
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
@@ -60,6 +63,15 @@ const App: React.FC = () => {
             setInstallPrompt(e);
         };
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        
+        // Listener for API Quota errors
+        const handleQuotaExceeded = () => {
+            console.warn("Evento de cota excedida recebido. Ativando o modo de simulação global.");
+            setIsSimulationMode(true);
+            enableGeminiSimulationMode(); // Notify the service to use mocks for all subsequent calls
+        };
+        window.addEventListener('quotaExceeded', handleQuotaExceeded);
+
 
         // Apply custom admin styles
         const customStyles = localStorage.getItem('arc7hive_custom_styles');
@@ -94,6 +106,7 @@ const App: React.FC = () => {
         
         return () => {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            window.removeEventListener('quotaExceeded', handleQuotaExceeded);
         };
     }, []);
 
@@ -255,6 +268,13 @@ const App: React.FC = () => {
     const totalVideos = useMemo(() => learningCategories.reduce((acc, cat) => acc + cat.videos.length, 0), [learningCategories]);
     const completedVideos = watchedVideos.size;
     const overallProgress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+    
+    const SimulationModeBanner = () => (
+        <div className="bg-yellow-500/20 border-b-2 border-yellow-600 text-yellow-200 text-sm text-center p-2 z-50 sticky top-0">
+            <Icon name="Wrench" className="w-4 h-4 inline-block mr-2 -mt-1" />
+            <b>Modo de Simulação Ativado:</b> A cota da API foi excedida. A aplicação está usando dados de exemplo.
+        </div>
+    );
 
     const renderContent = () => {
         if (!currentUser) {
@@ -318,6 +338,7 @@ const App: React.FC = () => {
         return (
             <DashboardPage
                 user={currentUser}
+                // Fix: Cannot find name 'onLogout'. Changed to use the defined handler 'handleLogout'.
                 onLogout={handleLogout}
                 onSelectCategory={handleSelectCategory}
                 overallProgress={overallProgress}
@@ -339,6 +360,7 @@ const App: React.FC = () => {
 
     return (
         <>
+            {isSimulationMode && <SimulationModeBanner />}
             {renderContent()}
             {showChatbot && <Chatbot />}
             {showMusicPlayer && <MusicPlayer playlist={playlist} />}

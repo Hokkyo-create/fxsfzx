@@ -1,153 +1,196 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { VideoScript } from '../types';
 import Icon from './Icons';
 
 interface StitchedVideoPlayerProps {
-    sceneUrls: string[];
     script: VideoScript;
-    voiceStyle: 'male' | 'female';
+    videoUrls: string[]; // Can be API URIs or direct placeholder URLs
 }
 
-const StitchedVideoPlayer: React.FC<StitchedVideoPlayerProps> = ({ sceneUrls, script, voiceStyle }) => {
+const StitchedVideoPlayer: React.FC<StitchedVideoPlayerProps> = ({ script, videoUrls }) => {
     const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [progress, setProgress] = useState(0); // Overall progress from 0 to 1
-    const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-    
+    const [fetchedVideoBlobs, setFetchedVideoBlobs] = useState<string[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const videoRef = useRef<HTMLVideoElement>(null);
     const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+    // Fetch video blobs since API URIs require an API key
     useEffect(() => {
-        const loadVoices = () => {
-            const availableVoices = window.speechSynthesis.getVoices();
-            setVoices(availableVoices);
+        const fetchVideos = async () => {
+            setIsLoading(true);
+            const apiKey = process.env.API_KEY;
+            
+            try {
+                const blobUrls = await Promise.all(
+                    videoUrls.map(async (uri) => {
+                        const isApiUrl = uri.includes('generativelanguage.googleapis.com');
+                        if (isApiUrl && !apiKey) {
+                            throw new Error("API_KEY is required to fetch generated videos.");
+                        }
+                        const fetchUrl = isApiUrl ? `${uri}&key=${apiKey}` : uri;
+                        const response = await fetch(fetchUrl);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch video from ${uri}`);
+                        }
+                        const blob = await response.blob();
+                        return URL.createObjectURL(blob);
+                    })
+                );
+                setFetchedVideoBlobs(blobUrls);
+            } catch (error) {
+                console.error("Error fetching video blobs:", error);
+            } finally {
+                setIsLoading(false);
+            }
         };
-        loadVoices();
-        // Voices might load asynchronously
-        window.speechSynthesis.onvoiceschanged = loadVoices;
-    }, []);
 
-    const playNarration = useCallback((text: string) => {
-        window.speechSynthesis.cancel(); // Cancel any previous speech
-        if (!text.trim() || voices.length === 0) return;
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        
-        // Find a suitable voice
-        const ptBrVoices = voices.filter(v => v.lang.startsWith('pt-BR'));
-        let selectedVoice = ptBrVoices[0] || voices.find(v => v.lang.startsWith('pt')) || null;
-        
-        if (voiceStyle === 'female') {
-            // Fix: The 'gender' property is not standard. Check voice name for gender keywords instead.
-            selectedVoice = ptBrVoices.find(v => v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('feminina')) || selectedVoice;
-        } else {
-            // Fix: The 'gender' property is not standard. Check voice name for gender keywords instead.
-             selectedVoice = ptBrVoices.find(v => v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('masculina')) || selectedVoice;
+        if (videoUrls.length > 0) {
+            fetchVideos();
         }
-        
-        utterance.voice = selectedVoice;
-        utterance.lang = 'pt-BR';
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        
-        utteranceRef.current = utterance;
-        window.speechSynthesis.speak(utterance);
 
-    }, [voices, voiceStyle]);
-    
-    const handlePlayPause = useCallback(() => {
-        setIsPlaying(prev => !prev);
-    }, []);
+        // Cleanup blob URLs on unmount
+        return () => {
+            fetchedVideoBlobs.forEach(URL.revokeObjectURL);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [videoUrls]);
 
+    // Setup Text-to-Speech
     useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
+        if ('speechSynthesis' in window && script.fullNarrationScript) {
+            const utterance = new SpeechSynthesisUtterance(script.fullNarrationScript);
+            const voices = window.speechSynthesis.getVoices();
+            utterance.voice = voices.find(voice => voice.lang === 'pt-BR') || voices.find(voice => voice.lang.startsWith('pt-')) || voices[0];
+            utterance.pitch = 1;
+            utterance.rate = 1;
+            utterance.volume = 1;
 
+            utterance.onstart = () => {
+                videoRef.current?.play();
+                setIsPlaying(true);
+            };
+            utterance.onend = () => {
+                setIsPlaying(false);
+                setCurrentSceneIndex(0); 
+                if(videoRef.current) videoRef.current.currentTime = 0;
+            };
+            utterance.onpause = () => {
+                videoRef.current?.pause();
+                setIsPlaying(false);
+            };
+            utterance.onresume = () => {
+                videoRef.current?.play();
+                setIsPlaying(true);
+            };
+            
+            utteranceRef.current = utterance;
+            
+            return () => {
+                window.speechSynthesis.cancel();
+            }
+        }
+    }, [script.fullNarrationScript]);
+
+
+    const handlePlayPause = () => {
+        if (!videoRef.current || !utteranceRef.current) return;
+        
         if (isPlaying) {
-            video.play().catch(e => console.error("Video play failed:", e));
-            // Resume speech if paused
+             window.speechSynthesis.pause();
+        } else {
             if (window.speechSynthesis.paused) {
                 window.speechSynthesis.resume();
-            }
-        } else {
-            video.pause();
-            // Pause speech
-            if (window.speechSynthesis.speaking) {
-                window.speechSynthesis.pause();
+            } else {
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(utteranceRef.current);
             }
         }
-    }, [isPlaying]);
-    
+    };
+
     const handleVideoEnded = () => {
-        if (currentSceneIndex < sceneUrls.length - 1) {
-            setCurrentSceneIndex(prev => prev + 1);
-        } else {
-            setIsPlaying(false);
-            setCurrentSceneIndex(0); // Loop back to the beginning
+        // Loop the current video if it ends before narration
+        if (videoRef.current) {
+            videoRef.current.currentTime = 0;
+            videoRef.current.play();
         }
     };
     
-    // Switch video source and play narration when scene changes
     useEffect(() => {
-        const video = videoRef.current;
-        if (video) {
-            video.src = sceneUrls[currentSceneIndex];
-            video.load();
+        if (videoRef.current && fetchedVideoBlobs[currentSceneIndex]) {
+            videoRef.current.src = fetchedVideoBlobs[currentSceneIndex];
             if (isPlaying) {
-                video.play().catch(e => console.error("Video play on scene change failed:", e));
-                playNarration(script.scenes[currentSceneIndex].narration);
+                videoRef.current.play().catch(e => console.error("Video play error:", e));
             }
         }
-    }, [currentSceneIndex, sceneUrls, script.scenes, isPlaying, playNarration]);
-
-    // Update overall progress bar
-    useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
-        const updateProgressBar = () => {
-             if (video.duration > 0) {
-                const sceneProgress = video.currentTime / video.duration;
-                const overall = (currentSceneIndex + sceneProgress) / sceneUrls.length;
-                setProgress(overall);
-            }
-        };
-        video.addEventListener('timeupdate', updateProgressBar);
-        return () => video.removeEventListener('timeupdate', updateProgressBar);
-    }, [currentSceneIndex, sceneUrls.length]);
+    }, [currentSceneIndex, fetchedVideoBlobs, isPlaying]);
     
+    // This effect handles advancing scenes based on speech synthesis boundaries
+    useEffect(() => {
+        const utterance = utteranceRef.current;
+        if (!utterance) return;
+        
+        let sceneStartTimes: {charIndex: number, sceneIndex: number}[] = [];
+        let currentIndex = -1;
+        
+        script.scenes.reduce((acc, scene) => {
+            currentIndex++;
+            sceneStartTimes.push({charIndex: acc, sceneIndex: currentIndex});
+            return acc + scene.narration.length;
+        }, 0);
+        
+        const boundaryHandler = (event: SpeechSynthesisEvent) => {
+            const spokenCharIndex = event.charIndex;
+            
+            // Find the current scene based on how many characters have been spoken
+            let currentScene = 0;
+            for(let i = sceneStartTimes.length - 1; i >= 0; i--) {
+                if(spokenCharIndex >= sceneStartTimes[i].charIndex) {
+                    currentScene = sceneStartTimes[i].sceneIndex;
+                    break;
+                }
+            }
+            
+            if (currentScene !== currentSceneIndex) {
+                setCurrentSceneIndex(currentScene);
+            }
+        }
+        
+        utterance.addEventListener('boundary', boundaryHandler);
+        
+        return () => {
+            utterance.removeEventListener('boundary', boundaryHandler);
+        }
+        
+    }, [script, currentSceneIndex]);
+
+
+    if (isLoading) {
+        return <div className="text-center text-gray-400 p-8">Carregando vídeos...</div>;
+    }
 
     return (
         <div className="w-full">
-             <p className="text-sm font-semibold text-gray-300 mb-2">Vídeo Completo Gerado</p>
-            <div className="w-full aspect-video bg-black rounded-lg overflow-hidden relative group">
+            <div className="aspect-video bg-black rounded-lg overflow-hidden relative group">
                 <video
                     ref={videoRef}
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-cover"
                     onEnded={handleVideoEnded}
-                    onPlay={() => {
-                        if (!window.speechSynthesis.speaking) {
-                             playNarration(script.scenes[currentSceneIndex].narration);
-                        }
-                    }}
+                    src={fetchedVideoBlobs[0]}
+                    muted // Narration is handled by SpeechSynthesis
                     playsInline
+                    loop
                 />
                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <button onClick={handlePlayPause} className="p-4 bg-black/50 rounded-full">
-                        <Icon name={isPlaying ? "Pause" : "Play"} className="w-8 h-8 text-white" />
+                    <button onClick={handlePlayPause} className="w-16 h-16 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm">
+                        <Icon name={isPlaying ? "Pause" : "Play"} className="w-8 h-8" />
                     </button>
                 </div>
             </div>
-             <div className="mt-2 p-2 bg-gray-900/50 rounded-lg">
-                 <div className="w-full bg-gray-700 rounded-full h-1.5">
-                    <div className="bg-brand-red h-1.5 rounded-full" style={{ width: `${progress * 100}%` }}></div>
-                </div>
-                 <div className="flex justify-between items-center mt-2 px-1">
-                    <p className="text-xs text-gray-400">Cena {currentSceneIndex + 1} de {sceneUrls.length}</p>
-                    <button onClick={handlePlayPause} className="text-gray-300 hover:text-white">
-                        <Icon name={isPlaying ? "Pause" : "Play"} className="w-5 h-5" />
-                    </button>
-                 </div>
-             </div>
+            <div className="mt-4 p-4 bg-gray-900/50 rounded-lg">
+                <h3 className="font-display text-lg text-brand-red mb-2">Roteiro e Narração</h3>
+                <p className="text-sm text-gray-300 max-h-24 overflow-y-auto pr-2">{script.fullNarrationScript}</p>
+            </div>
         </div>
     );
 };

@@ -28,6 +28,58 @@
           background-image: radial-gradient(circle at top, rgba(229, 9, 20, 0.10) 0%, rgba(10, 10, 10, 0) 35%);
           background-repeat: no-repeat;
         }
+
+        /* PDF Export Styles */
+        .pdf-export-mode {
+          width: 515pt !important;
+          margin: 0 auto !important;
+          padding: 0 !important;
+          max-width: none !important;
+          background-color: #0A0A0A !important;
+          color: #E5E7EB !important;
+          font-size: 10pt;
+          line-height: 1.5;
+          border: none !important;
+          box-shadow: none !important;
+        }
+        .pdf-export-mode button {
+          display: none !important;
+        }
+        .pdf-export-mode .aspect-\[3\/4\] {
+          page-break-after: always;
+          height: 750pt !important;
+          max-height: 750pt !important;
+          aspect-ratio: auto !important;
+        }
+        .pdf-export-mode img {
+          max-width: 100% !important;
+          height: auto !important;
+          object-fit: contain !important;
+        }
+        .pdf-export-mode .p-8.md\:p-12, .pdf-export-mode .p-4 {
+          padding: 0 !important;
+        }
+        .pdf-export-mode h1 {
+          page-break-before: always;
+          padding-top: 40pt;
+          font-size: 28pt !important;
+          margin-bottom: 24pt !important;
+        }
+        .pdf-export-mode h3 {
+          page-break-before: always;
+          padding-top: 40pt;
+          font-size: 18pt !important;
+          margin-top: 0 !important;
+          margin-bottom: 16pt !important;
+        }
+        .pdf-export-mode h1 + h3 {
+          page-break-before: auto;
+          padding-top: 0;
+        }
+        .pdf-export-mode p {
+          font-size: 10pt;
+          margin-bottom: 12pt;
+        }
     </style>
     <script>
       tailwind.config = {
