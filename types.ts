@@ -3,7 +3,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search';
 
 export interface User {
   name: string;
@@ -81,4 +81,11 @@ export interface Song {
   artist: string;
   url: string;
   storagePath: string; // Full path in Firebase Storage for deletion
+}
+
+export interface YouTubeTrack {
+  id: string;
+  title: string;
+  artist: string;
+  thumbnailUrl: string;
 }

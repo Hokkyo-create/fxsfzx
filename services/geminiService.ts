@@ -1,7 +1,7 @@
 // services/geminiService.ts
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import type { Video, ChatMessage, MeetingMessage } from '../types';
+import type { Video, ChatMessage, MeetingMessage, YouTubeTrack } from '../types';
 
 // NOTE: Using the user-provided key directly.
 const YOUTUBE_API_KEY = 'AIzaSyAwudima4ZEO18AQtbY4fzgI02_LpziE8A';
@@ -102,6 +102,38 @@ export const findMoreVideos = async (topic: string, existingVideoIds: string[]):
 
     } catch (error) {
         console.error("An unexpected error occurred during the YouTube API processing:", error);
+        if (error instanceof Error) throw error;
+        throw new Error("Falha ao se comunicar com a API do YouTube.");
+    }
+};
+
+
+export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
+    if (!query) return [];
+
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&videoCategoryId=10&videoEmbeddable=true&maxResults=10&key=${YOUTUBE_API_KEY}`;
+
+    try {
+        const response = await fetch(searchUrl);
+        if (!response.ok) {
+            if (response.status === 403) {
+                throw new Error("Busca no YouTube indisponível. A chave da API é inválida ou expirou.");
+            }
+            throw new Error(`Falha na busca do YouTube. Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.items) return [];
+
+        return data.items.map((item: any): YouTubeTrack => ({
+            id: item.id.videoId,
+            title: item.snippet.title,
+            artist: item.snippet.channelTitle,
+            thumbnailUrl: item.snippet.thumbnails.default.url,
+        }));
+
+    } catch (error) {
+        console.error("Erro ao buscar músicas no YouTube:", error);
         if (error instanceof Error) throw error;
         throw new Error("Falha ao se comunicar com a API do YouTube.");
     }
