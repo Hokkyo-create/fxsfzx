@@ -21,6 +21,14 @@ export const getMockFindMoreVideos = (): Video[] => {
     return [];
 };
 
+export const getMockTikTokVideos = (): Video[] => {
+    return [];
+};
+
+export const getMockInstagramVideos = (): Video[] => {
+    return [];
+};
+
 export const getMockChatbotResponse = (isError: boolean = false): string => {
     if (isError) {
         return "Oops! Tive um problema para me conectar. Como a cota da API foi excedida, estou em modo de simulação.";

@@ -14,6 +14,8 @@ export const categories: LearningCategory[] = [
         icon: 'Fire',
         color: 'red',
         videos: [],
+        tiktokVideos: [],
+        instagramVideos: [],
     },
     {
         id: 'marketing-digital',
@@ -22,6 +24,8 @@ export const categories: LearningCategory[] = [
         icon: 'Chart',
         color: 'orange',
         videos: [],
+        tiktokVideos: [],
+        instagramVideos: [],
     },
     {
         id: 'mercado-financeiro',
@@ -30,6 +34,8 @@ export const categories: LearningCategory[] = [
         icon: 'Dollar',
         color: 'green',
         videos: [],
+        tiktokVideos: [],
+        instagramVideos: [],
     },
     {
         id: 'vendas-produtos-digitais',
@@ -38,6 +44,8 @@ export const categories: LearningCategory[] = [
         icon: 'Cart',
         color: 'blue',
         videos: [],
+        tiktokVideos: [],
+        instagramVideos: [],
     },
     {
         id: 'ferramentas-automacao',
@@ -46,6 +54,8 @@ export const categories: LearningCategory[] = [
         icon: 'Wrench',
         color: 'indigo',
         videos: [],
+        tiktokVideos: [],
+        instagramVideos: [],
     },
     {
         id: 'academia-fitness',
@@ -54,6 +64,8 @@ export const categories: LearningCategory[] = [
         icon: 'Dumbbell',
         color: 'yellow',
         videos: [],
+        tiktokVideos: [],
+        instagramVideos: [],
     },
     {
         id: 'psicologia-desenvolvimento',
@@ -62,5 +74,7 @@ export const categories: LearningCategory[] = [
         icon: 'Heart',
         color: 'rose',
         videos: [],
+        tiktokVideos: [],
+        instagramVideos: [],
     }
 ];

@@ -17,7 +17,7 @@ export interface OnlineUser {
 }
 
 export interface Video {
-  id: string; // youtube video ID
+  id: string; // youtube video ID, tiktok video id, or instagram shortcode
   title: string;
   duration: string; // e.g. "10:32"
   thumbnailUrl: string;
@@ -30,6 +30,8 @@ export interface LearningCategory {
   icon: IconName;
   color: 'red' | 'orange' | 'green' | 'cyan' | 'blue' | 'indigo' | 'yellow' | 'rose';
   videos: Video[];
+  tiktokVideos?: Video[];
+  instagramVideos?: Video[];
 }
 
 export interface Chapter {

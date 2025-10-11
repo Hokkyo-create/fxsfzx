@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
 import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Song } from './types';
@@ -247,16 +246,29 @@ const App: React.FC = () => {
         });
     };
     
-    const handleAddVideosToCategory = (categoryId: string, newVideos: Video[]) => {
+    const handleAddVideosToCategory = (categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => {
         setLearningCategories(prevCategories => {
             const updatedCategories = prevCategories.map(cat => {
                 if (cat.id === categoryId) {
-                    const existingVideoIds = new Set(cat.videos.map(v => v.id));
-                    const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                    return { ...cat, videos: [...cat.videos, ...uniqueNewVideos] };
+                    let updatedCat = { ...cat };
+                    if (platform === 'youtube') {
+                        const existingVideoIds = new Set(cat.videos.map(v => v.id));
+                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                        updatedCat.videos = [...cat.videos, ...uniqueNewVideos];
+                    } else if (platform === 'tiktok') {
+                        const existingVideoIds = new Set((cat.tiktokVideos || []).map(v => v.id));
+                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                        updatedCat.tiktokVideos = [...(cat.tiktokVideos || []), ...uniqueNewVideos];
+                    } else if (platform === 'instagram') {
+                        const existingVideoIds = new Set((cat.instagramVideos || []).map(v => v.id));
+                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                        updatedCat.instagramVideos = [...(cat.instagramVideos || []), ...uniqueNewVideos];
+                    }
+                    return updatedCat;
                 }
                 return cat;
             });
+
             if (selectedCategory?.id === categoryId) {
                 const updatedCategory = updatedCategories.find(c => c.id === categoryId);
                 if (updatedCategory) setSelectedCategory(updatedCategory);

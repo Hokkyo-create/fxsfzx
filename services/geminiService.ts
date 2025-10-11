@@ -1,407 +1,553 @@
-// services/geminiService.ts
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import type { ChatMessage, LearningCategory, MeetingMessage, Project, QuizQuestion, Video, VideoScript, YouTubeTrack } from "../types";
+import {
+    getMockChatbotResponse,
+    getMockEbookQuiz,
+    getMockEbookStream,
+    getMockImageBase64,
+    getMockImagePrompt,
+    getMockInstagramVideos,
+    getMockLiveStyles,
+    getMockMeetingChatResponse,
+    getMockPromptIdeas,
+    getMockTikTokVideos,
+    getMockVideoOperation,
+    getMockVideoScript,
+    getMockYouTubeMusic,
+    quizSchema,
+    videoScriptSchema
+} from "./geminiServiceMocks";
 
-import { GoogleGenAI, Type } from "@google/genai";
-import type {
-    ChatMessage,
-    MeetingMessage,
-    Project,
-    QuizQuestion,
-    Video,
-    YouTubeTrack,
-    VideoScript
-} from '../types';
-import * as Mocks from './geminiServiceMocks';
+let isSimulationMode = false;
+let apiKey: string | undefined;
 
-// --- Initialization ---
-
-let ai: GoogleGenAI | null = null;
-let simulationModeEnabled = false;
-
-// Wrap in a function for safer execution
-const initializeAi = () => {
-    try {
-        // Safely check for the existence of process and env variables
-        const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
-
-        if (!apiKey) {
-            throw new Error("API_KEY environment variable is not set or not accessible in this environment.");
-        }
-        ai = new GoogleGenAI({ apiKey });
-    } catch (error) {
-        console.warn("Could not initialize Gemini AI, forcing simulation mode. Error:", (error as Error).message);
-        simulationModeEnabled = true;
-        // Dispatch the event right away if initialization fails on load.
-        // Use a timeout to ensure the App component has mounted its listener.
-        setTimeout(() => window.dispatchEvent(new CustomEvent('quotaExceeded')), 0);
+try {
+    // This approach is safer for environments where process.env might not be defined (like Vercel).
+    apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
+    if (!apiKey) {
+        throw new Error("API_KEY environment variable not set or accessible.");
     }
-};
+} catch (error) {
+    console.warn("Could not retrieve API_KEY, proceeding without it. Simulation mode may be activated if needed.", error);
+}
 
-// Initialize on module load
-initializeAi();
 
+// Initialize the Google AI client
+let ai: GoogleGenAI;
+if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
+} else {
+    console.warn("GoogleGenAI not initialized due to missing API Key. Entering simulation mode.");
+    isSimulationMode = true;
+    window.dispatchEvent(new CustomEvent('quotaExceeded'));
+}
 
-/**
- * Called by the UI layer (App.tsx) to globally enable simulation mode.
- */
-export const enableSimulationMode = (): void => {
-    simulationModeEnabled = true;
-};
-
-/**
- * Checks for a quota error and activates simulation mode if found.
- * @param error The error object from a catch block.
- */
-const handleQuotaError = (error: unknown): void => {
-    if (error instanceof Error && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('resource_exhausted'))) {
-        if (!simulationModeEnabled) {
-            console.warn("Quota error detected. Activating global simulation mode.");
-            // Dispatch a custom event for the UI to listen to.
-            window.dispatchEvent(new CustomEvent('quotaExceeded'));
-        }
+// Function to handle API call errors and trigger simulation mode if quota is exceeded
+const handleApiError = (error: any) => {
+    console.error("Google GenAI API Error:", error);
+    if (error.message && typeof error.message === 'string' && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('api key not valid'))) {
+        console.warn("API quota exceeded or key invalid. Enabling simulation mode.");
+        enableSimulationMode();
+        window.dispatchEvent(new CustomEvent('quotaExceeded'));
     }
+    // Re-throw the error so the calling function can handle it
+    throw error;
 };
 
-/**
- * Gets a response from the AI for the meeting chat.
- */
+// Global function to enable simulation mode, e.g., on API quota error
+export const enableSimulationMode = () => {
+    isSimulationMode = true;
+};
+
+// --- API Functions ---
+
+// 1. Get Meeting Chat Response
 export const getMeetingChatResponse = async (prompt: string, history: MeetingMessage[]): Promise<string> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockMeetingChatResponse();
+    if (isSimulationMode || !ai) return getMockMeetingChatResponse();
+
+    const formattedHistory = history.map(msg => ({
+        role: msg.user === 'ARC7' ? 'model' : 'user',
+        parts: [{ text: msg.text }],
+    }));
+
     try {
-        const model = 'gemini-2.5-flash';
-        const systemInstruction = `You are ARC7, a helpful AI assistant integrated into the ARC7HIVE learning platform's meeting room. 
-        Your goal is to provide concise, helpful, and relevant information based on the ongoing conversation. 
-        Users will mention you by starting their message with '@arc7'. 
-        The provided history contains past messages for context. Keep your answers brief and to the point.
-        The current date is ${new Date().toLocaleDateString()}.`;
-
-        const contents = history.map(msg => ({
-            role: msg.user === 'ARC7' ? 'model' as const : 'user' as const,
-            parts: [{ text: `${msg.user}: ${msg.text}` }]
-        }));
-        
-        contents.push({ role: 'user', parts: [{ text: prompt }] });
-
-        const response = await ai.models.generateContent({
-            model,
-            contents,
-            config: { systemInstruction }
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+                ...formattedHistory,
+                { role: 'user', parts: [{ text: prompt }] }
+            ],
+            config: {
+                systemInstruction: "You are ARC7, an AI assistant in a team meeting. Be concise, helpful, and professional. Your name is ARC7.",
+            }
         });
         return response.text;
     } catch (error) {
-        console.error("Error getting meeting chat response:", error);
-        handleQuotaError(error);
-        return Mocks.getMockMeetingChatResponse();
+        handleApiError(error);
+        return getMockMeetingChatResponse();
     }
 };
 
-/**
- * Finds more YouTube videos for a learning category.
- */
-export const findMoreVideos = async (categoryTitle: string, existingVideoIds: string[]): Promise<Video[]> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockFindMoreVideos();
-    try {
-        const model = 'gemini-2.5-flash';
-        const prompt = `Encontre 5 vídeos adicionais no YouTube sobre o tópico "${categoryTitle}" usando o Google Search. 
-        Para cada vídeo, forneça o ID do vídeo do YouTube, o título, a duração no formato "MM:SS" e a URL da thumbnail.
-        NÃO inclua nenhum dos seguintes IDs de vídeo que já estão na lista: ${existingVideoIds.join(', ')}.
-        Retorne os resultados DENTRO de um bloco de código JSON, no formato de um array de objetos. Exemplo de formato de objeto: {"id": "videoId", "title": "videoTitle", "duration": "10:32", "thumbnailUrl": "url"}.
-        Certifique-se de que o JSON esteja bem-formado.`;
-
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: { tools: [{googleSearch: {}}] }
-        });
-        
-        const jsonMatch = response.text.match(/```json\n([\s\S]*?)\n```/);
-        const jsonText = jsonMatch ? jsonMatch[1] : response.text;
-        
-        const newVideos: Video[] = JSON.parse(jsonText);
-        return newVideos.filter(v => v.id && v.title && v.duration && v.thumbnailUrl);
-
-    } catch (error) {
-        console.error("Error finding more videos:", error);
-        handleQuotaError(error);
-        // On error, return an empty array to avoid crashing the UI
-        return Mocks.getMockFindMoreVideos();
-    }
-};
-
-/**
- * Gets a response from the AI for the general chatbot.
- */
+// 2. Get Chatbot Response
 export const getChatbotResponse = async (prompt: string, history: ChatMessage[]): Promise<string> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockChatbotResponse();
+    if (isSimulationMode || !ai) return getMockChatbotResponse();
+    
+    const formattedHistory = history.map(msg => ({
+        role: msg.role,
+        parts: [{ text: msg.text }]
+    }));
+    
     try {
-        const model = 'gemini-2.5-flash';
-        const systemInstruction = `You are ARC7, a friendly and helpful AI assistant for the ARC7HIVE learning platform...`; // (Full instruction omitted for brevity)
-
-        const contents = history.map(msg => ({
-            role: msg.role,
-            parts: [{ text: msg.text }]
-        }));
-        contents.push({ role: 'user', parts: [{ text: prompt }] });
-        
-        const response = await ai.models.generateContent({
-            model,
-            contents,
-            config: { systemInstruction }
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [...formattedHistory, {role: 'user', parts: [{text: prompt}]}],
+            config: {
+                systemInstruction: `You are ARC7, a helpful AI assistant for the ARC7HIVE learning platform. Your goal is to guide users and answer questions about the platform's features and content. The platform has categories like 'Inteligência Artificial', 'Marketing Digital', 'Mercado Financeiro', etc. It also has a 'Projects' area where users can create ebooks with AI. Be friendly and informative. Use markdown for formatting, like **bold** for emphasis.`,
+            }
         });
-        
         return response.text;
     } catch (error) {
-        console.error("Error getting chatbot response:", error);
-        handleQuotaError(error);
-        return Mocks.getMockChatbotResponse(true);
+        handleApiError(error);
+        return getMockChatbotResponse(true);
     }
 };
 
-/**
- * Generates CSS code from a text prompt for live styling.
- */
-export const generateLiveStyles = async (prompt: string): Promise<string> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockLiveStyles();
+const extractJson = (text: string): any[] | null => {
+    const startIndex = text.indexOf('[');
+    const endIndex = text.lastIndexOf(']');
+
+    if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+        console.warn("Could not find a JSON array in the AI response.", text);
+        return null;
+    }
+
+    const jsonString = text.substring(startIndex, endIndex + 1);
+
     try {
-        const model = 'gemini-2.5-flash';
-        const systemInstruction = `You are an AI that generates CSS code...`; // (Full instruction omitted for brevity)
-
-        const response = await ai.models.generateContent({
-            model,
-            contents: `Generate CSS for this request: "${prompt}"`,
-            config: { systemInstruction }
-        });
-
-        let css = response.text.replace(/^```css\n?/, '').replace(/```$/, '').trim();
-        return css;
-
-    } catch (error) {
-        console.error("Error generating live styles:", error);
-        handleQuotaError(error);
-        throw new Error("Não foi possível gerar os estilos. A IA pode estar indisponível.");
+        return JSON.parse(jsonString);
+    } catch (e) {
+        console.error("Failed to parse JSON from AI response:", e);
+        console.error("Original text:", text);
+        return null;
     }
 };
 
+
+const YOUTUBE_API_KEY = "AIzaSyD3S9GO5qWWtfr934yAjt4YJ0qN6itMYqs";
+
 /**
- * Generates an image generation prompt based on text content.
+ * Verifies if a YouTube video ID is valid by checking its thumbnail endpoint.
+ * This is a more reliable method than third-party services and does not require a full API key.
+ * @param videoId The YouTube video ID.
+ * @returns True if the video exists, false otherwise.
  */
-export const generateImagePromptForText = async (title: string, content: string): Promise<string> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockImagePrompt();
-     try {
-        const model = 'gemini-2.5-flash';
-        const systemInstruction = `You are an AI assistant that creates concise, descriptive, and artistic image generation prompts in English...`; // (Full instruction omitted for brevity)
+async function verifyYouTubeVideo(videoId: string): Promise<boolean> {
+  try {
+    // YouTube returns a 404 Not Found for thumbnails of non-existent or private videos.
+    // We can use this as a simple, key-less verification method. A HEAD request is faster.
+    const response = await fetch(`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`, { method: 'HEAD' });
+    return response.ok; // response.ok is true if the status is 200-299
+  } catch (error) {
+    console.warn(`Verification check failed for video ID ${videoId}`, error);
+    return false; // Network error or other issue
+  }
+}
+
+async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', categoryTitle: string): Promise<Video[]> {
+    if (isSimulationMode || !ai) {
+        return platform === 'tiktok' ? getMockTikTokVideos() : getMockInstagramVideos();
+    }
+    
+    const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
+    const idField = platform === 'instagram' ? 'shortcode' : 'ID do vídeo';
+
+    const prompt = `Encontre 7 vídeos brasileiros REAIS, PÚBLICOS e relevantes sobre "${categoryTitle}" na plataforma ${platformName}.
+    Foque em conteúdo educativo de alta qualidade, como tutoriais, aulas ou dicas.
+    Para cada vídeo, forneça o ${idField} e um título claro e conciso.
+    Responda APENAS com um array JSON no seguinte formato: [{ "id": "videoId", "title": "Video Title" }, ...]. NÃO inclua texto adicional, explicações ou markdown.`;
+
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+            },
+        });
         
-        const response = await ai.models.generateContent({
-            model,
-            contents: `Title: "${title}"\n\nContent: "${content.substring(0, 500)}..."\n\nGenerate an image prompt.`,
-            config: { systemInstruction }
+        const parsedJson = extractJson(response.text);
+
+        if (!parsedJson || parsedJson.length === 0) {
+            console.warn(`AI response for ${platform} did not contain valid JSON or was empty.`, response.text);
+            return [];
+        }
+
+        return parsedJson.map((item: { id: string; title: string }) => {
+            const thumbnailUrl = `https://placehold.co/480x360/141414/E50914?text=${platformName}`;
+            return {
+                id: item.id,
+                title: item.title,
+                duration: '??:??',
+                thumbnailUrl,
+            };
+        });
+    } catch (error) {
+        console.error(`Error finding ${platform} videos for "${categoryTitle}" with Gemini:`, error);
+        handleApiError(error);
+        throw new Error(`A busca com IA para ${platformName} falhou.`);
+    }
+}
+
+async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count: number = 7): Promise<Video[]> {
+    if (isSimulationMode || !ai) return [];
+    
+    console.log(`Iniciando busca com fallback da IA para "${categoryTitle}"...`);
+    
+    // Ask for more candidates than needed to account for invalid/hallucinated ones.
+    const numCandidates = 15; 
+
+    const prompt = `Usando a Busca Google, encontre ${numCandidates} vídeos brasileiros REAIS, PÚBLICOS e relevantes sobre "${categoryTitle}" no YouTube.
+    Foque em conteúdo educativo de alta qualidade, como tutoriais, aulas ou dicas.
+    Para cada vídeo, forneça o ID do vídeo (o código de 11 caracteres na URL, ex: dQw4w9WgXcQ) e um título claro e conciso.
+    É EXTREMAMENTE IMPORTANTE que os IDs sejam de vídeos que existem de verdade e não sejam inventados.
+    Responda APENAS com um array JSON no seguinte formato: [{ "id": "videoId", "title": "Video Title" }]. NÃO inclua texto adicional, explicações ou markdown.`;
+    
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: { tools: [{ googleSearch: {} }] },
+        });
+        
+        const candidates = extractJson(response.text);
+        if (!candidates || candidates.length === 0) {
+            console.warn("IA não retornou candidatos ou o JSON é inválido na tentativa de fallback.");
+            return [];
+        }
+
+        // Verify candidates in parallel for speed
+        const verificationPromises = candidates.map(async (candidate: any) => {
+            const videoId = candidate?.id;
+            // Basic validation for video ID format
+            if (videoId && typeof videoId === 'string' && videoId.length === 11 && /^[a-zA-Z0-9_-]+$/.test(videoId)) {
+                const isValid = await verifyYouTubeVideo(videoId);
+                if (isValid) {
+                    return { // Return the full video object if valid
+                        id: videoId,
+                        title: candidate.title || "Título indisponível",
+                        duration: '??:??',
+                        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+                    };
+                }
+            }
+            return null; // Return null for invalid candidates
         });
 
-        return response.text.trim();
+        const verifiedResults = await Promise.all(verificationPromises);
+        
+        // Filter out the nulls (invalid videos) and take the desired count
+        const validVideos = verifiedResults.filter((v): v is Video => v !== null);
+
+        console.log(`Busca de fallback concluída. Encontrados ${validVideos.length} vídeos válidos de ${candidates.length} candidatos.`);
+        
+        // Return the first 'count' valid videos
+        return validVideos.slice(0, count);
+
+    } catch(error) {
+        console.error("Erro durante a chamada da IA na busca de fallback:", error);
+        handleApiError(error);
+        return []; // Return empty on error
+    }
+}
+
+
+export const findVideos = async (categoryTitle: string, platform: 'youtube' | 'tiktok' | 'instagram'): Promise<Video[]> => {
+    if (isSimulationMode) {
+        return [];
+    }
+    
+    if (platform === 'youtube') {
+        if (!YOUTUBE_API_KEY) {
+            console.warn("A chave da API do YouTube não está configurada. Usando fallback de IA.");
+            return findYouTubeVideosWithGeminiFallback(categoryTitle);
+        }
+        
+        const query = encodeURIComponent(`${categoryTitle} tutoriais e aulas em português`);
+        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&maxResults=7&type=video&videoEmbeddable=true&key=${YOUTUBE_API_KEY}`;
+        
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error("YouTube API Error:", data);
+                // If the API call is blocked, use the fallback
+                if (data?.error?.message.includes('are blocked')) {
+                    console.warn('Direct YouTube API call failed, falling back to Gemini search.');
+                    return findYouTubeVideosWithGeminiFallback(categoryTitle);
+                }
+                throw new Error(data.error?.message || "Ocorreu um erro ao buscar vídeos no YouTube.");
+            }
+
+            if (!data.items || data.items.length === 0) {
+                return [];
+            }
+            
+            return data.items.map((item: any) => ({
+                id: item.id.videoId,
+                title: item.snippet.title,
+                duration: '??:??',
+                thumbnailUrl: item.snippet.thumbnails.medium.url,
+            }));
+
+        } catch (error) {
+            console.error(`Error finding YouTube videos for "${categoryTitle}":`, error);
+            console.warn('Fallback to Gemini search due to an unexpected error.');
+            return findYouTubeVideosWithGeminiFallback(categoryTitle);
+        }
+    }
+
+    // --- TikTok & Instagram Logic using Gemini ---
+    return findSocialVideosWithGemini(platform, categoryTitle);
+};
+
+// 4. Generate Live CSS Styles
+export const generateLiveStyles = async (prompt: string): Promise<string> => {
+    if (isSimulationMode || !ai) return getMockLiveStyles();
+
+    const fullPrompt = `Based on the user prompt "${prompt}", generate only the CSS code to style the web application. The application has a dark theme. Common class names are .category-card, .progress-summary-card, .dashboard-header. Do not include any explanations, just the raw CSS code inside a \`\`\`css block.`;
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: fullPrompt
+        });
+        let css = response.text.trim();
+        if (css.startsWith('```css')) {
+            css = css.substring(5);
+        }
+        if (css.endsWith('```')) {
+            css = css.slice(0, -3);
+        }
+        return css.trim();
     } catch (error) {
-        console.error("Error generating image prompt:", error);
-        handleQuotaError(error);
-        return Mocks.getMockImagePrompt();
+        handleApiError(error);
+        return getMockLiveStyles();
     }
 };
 
-/**
- * Generates an image from a prompt and returns the base64 encoded string.
- */
+// 5. Generate Ebook Project Stream
+export async function* generateEbookProjectStream(topic: string, numChapters: number): AsyncGenerator<string> {
+    if (isSimulationMode || !ai) {
+        for (const chunk of getMockEbookStream()) {
+            yield chunk;
+            await new Promise(res => setTimeout(res, 50));
+        }
+        return;
+    }
+
+    const prompt = `Generate a short ebook about "${topic}". It should have an introduction, ${numChapters} chapters, and a conclusion.
+    Structure the response clearly using these exact markers:
+    # [Ebook Title Here]
+    [INTRODUÇÃO]
+    ...content...
+    [CAPÍTULO 1: Chapter Title Here]
+    ...content...
+    [CAPÍTULO 2: Chapter Title Here]
+    ...content...
+    ... and so on for all chapters ...
+    [CONCLUSÃO]
+    ...content...
+    
+    Ensure the content is detailed and well-written. The response must follow this structure precisely.`;
+
+    try {
+        const stream = await ai.models.generateContentStream({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+        });
+        for await (const chunk of stream) {
+            yield chunk.text;
+        }
+    } catch (error) {
+        handleApiError(error);
+        // In case of error, yield a mock stream
+        for (const chunk of getMockEbookStream()) {
+            yield chunk;
+            await new Promise(res => setTimeout(res, 50));
+        }
+    }
+}
+
+// 6. Generate Image Prompt from Text
+export const generateImagePromptForText = async (title: string, text: string): Promise<string> => {
+    if (isSimulationMode || !ai) return getMockImagePrompt();
+    
+    const prompt = `Based on the following title and text, create a concise, descriptive, and visually compelling prompt (in English) for an AI image generator. The prompt should capture the essence of the content.
+    Title: "${title}"
+    Text: "${text.substring(0, 500)}..."
+    
+    The prompt should be in a "cinematic, photorealistic" style. Provide only the prompt text.`;
+
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+        return response.text;
+    } catch (error) {
+        handleApiError(error);
+        return getMockImagePrompt();
+    }
+};
+
+// 7. Generate Image
 export const generateImage = async (prompt: string): Promise<string> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockImageBase64();
+    if (isSimulationMode || !ai) return getMockImageBase64();
     try {
         const response = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
             prompt: prompt,
-            config: { numberOfImages: 1, aspectRatio: "3:4" }
-        });
-        
-        if (response.generatedImages && response.generatedImages.length > 0) {
-            return response.generatedImages[0].image.imageBytes;
-        }
-        throw new Error("Nenhuma imagem foi gerada pela API.");
-    } catch (error) {
-        console.error("Error generating image:", error);
-        handleQuotaError(error);
-        return Mocks.getMockImageBase64();
-    }
-};
-
-/**
- * Generates the content of an ebook as a stream.
- */
-export const generateEbookProjectStream = async function*(topic: string, chapters: number): AsyncGenerator<string> {
-    if (simulationModeEnabled || !ai) {
-        for (const chunk of Mocks.getMockEbookStream()) {
-            yield chunk;
-            await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        return;
-    }
-    try {
-        const model = 'gemini-2.5-flash';
-        const systemInstruction = `You are an AI expert in content creation and writing...`; // (Full instruction omitted for brevity)
-        const prompt = `Topic: "${topic}"\nNumber of Chapters: ${chapters}`;
-    
-        const responseStream = await ai.models.generateContentStream({
-            model,
-            contents: prompt,
-            config: { systemInstruction }
-        });
-
-        for await (const chunk of responseStream) {
-            yield chunk.text;
-        }
-    } catch (error) {
-        console.error("Error generating ebook stream:", error);
-        handleQuotaError(error);
-        // If an error occurs mid-stream, we can't switch to a mock easily.
-        // We'll throw so the UI can display a proper error message.
-        throw new Error("Falha na geração do conteúdo do ebook.");
-    }
-};
-
-/**
- * Generates alternative prompt ideas for image generation.
- */
-export const generatePromptIdeas = async (originalPrompt: string): Promise<string[]> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockPromptIdeas();
-    try {
-        const model = 'gemini-2.5-flash';
-        const response = await ai.models.generateContent({
-            model,
-            contents: `Original prompt: "${originalPrompt}"`,
             config: {
-                systemInstruction: `You are an AI assistant that helps users refine image generation prompts...`,
-                responseMimeType: "application/json",
-                responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } },
-            }
-        });
-        return JSON.parse(response.text.trim());
-    } catch (error) {
-        console.error("Error generating prompt ideas:", error);
-        handleQuotaError(error);
-        return Mocks.getMockPromptIdeas();
-    }
-};
-
-/**
- * Searches for music on YouTube.
- */
-export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockYouTubeMusic();
-    try {
-        const model = 'gemini-2.5-flash';
-        const prompt = `Encontre 5 vídeos de música no YouTube para a busca: "${query}" usando o Google Search...`; // (Full prompt omitted)
-        
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: { tools: [{googleSearch: {}}] }
-        });
-
-        const jsonMatch = response.text.match(/```json\n([\s\S]*?)\n```/);
-        const jsonText = jsonMatch ? jsonMatch[1] : response.text;
-
-        const results: YouTubeTrack[] = JSON.parse(jsonText);
-        return results.map(track => ({ ...track, thumbnailUrl: `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg` }));
-    } catch (error) {
-        console.error("Error searching YouTube music:", error);
-        handleQuotaError(error);
-        return Mocks.getMockYouTubeMusic();
-    }
-};
-
-/**
- * Generates a quiz based on the content of an ebook project.
- */
-export const generateEbookQuiz = async (project: Project): Promise<QuizQuestion[]> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockEbookQuiz();
-    try {
-        const model = 'gemini-2.5-flash';
-        const fullText = `Title: ${project.name}\nIntroduction: ${project.introduction}\n` +
-            project.chapters.map(c => `Chapter: ${c.title}\n${c.content}`).join('\n\n') +
-            `\nConclusion: ${project.conclusion}`;
-        const prompt = `Based on the following ebook content, create a quiz with 5 multiple-choice questions...`; // (Full prompt omitted)
-
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: Mocks.quizSchema,
-            }
-        });
-        
-        const quiz: QuizQuestion[] = JSON.parse(response.text.trim());
-        if (quiz.some(q => q.options.length !== 4 || !q.options.includes(q.correctAnswer))) {
-            throw new Error("IA gerou um quiz em formato inválido.");
-        }
-        return quiz;
-    } catch (error) {
-        console.error("Error generating ebook quiz:", error);
-        handleQuotaError(error);
-        return Mocks.getMockEbookQuiz();
-    }
-};
-
-/**
- * Generates a video script from an ebook project.
- */
-export const generateVideoScript = async (project: Project): Promise<VideoScript> => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockVideoScript();
-    try {
-        const model = 'gemini-2.5-flash';
-        const fullText = `Title: ${project.name}...`; // (Full text omitted)
-        const prompt = `Based on the following ebook content, create a script for a short summary video...`; // (Full prompt omitted)
-
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: Mocks.videoScriptSchema,
+              numberOfImages: 1,
+              outputMimeType: 'image/png',
+              aspectRatio: '3:4',
             },
         });
-
-        return JSON.parse(response.text.trim());
+        return response.generatedImages[0].image.imageBytes;
     } catch (error) {
-        console.error("Error generating video script:", error);
-        handleQuotaError(error);
-        return Mocks.getMockVideoScript();
+        handleApiError(error);
+        return getMockImageBase64();
     }
 };
 
-/**
- * Starts the video generation process for a given prompt.
- */
-export const generateVideo = async (prompt: string) => {
-    if (simulationModeEnabled || !ai) return Mocks.getMockVideoOperation();
+// 8. Generate Prompt Ideas
+export const generatePromptIdeas = async (currentPrompt: string): Promise<string[]> => {
+    if (isSimulationMode || !ai) return getMockPromptIdeas();
+
+    const prompt = `Given the image generation prompt "${currentPrompt}", suggest 3 alternative or improved versions. The suggestions should be creative and enhance the original idea. Return the result as a JSON array of strings. Example: ["idea 1", "idea 2", "idea 3"]`;
+
     try {
-        return await ai.models.generateVideos({
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } }
+            }
+        });
+        
+        return JSON.parse(response.text);
+    } catch (error) {
+        handleApiError(error);
+        return getMockPromptIdeas();
+    }
+};
+
+// 9. Search YouTube Music
+export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
+    if (isSimulationMode || !ai) return getMockYouTubeMusic();
+
+    const prompt = `Find 5 music videos on YouTube for the search query "${query}". For each video, provide the video ID, title, artist, and thumbnail URL. Respond with a JSON array of objects.`;
+
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            id: { type: Type.STRING },
+                            title: { type: Type.STRING },
+                            artist: { type: Type.STRING },
+                            thumbnailUrl: { type: Type.STRING },
+                        },
+                        required: ["id", "title", "artist", "thumbnailUrl"],
+                    }
+                }
+            }
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        handleApiError(error);
+        return getMockYouTubeMusic();
+    }
+};
+
+// 10. Generate Ebook Quiz
+export const generateEbookQuiz = async (project: Project): Promise<QuizQuestion[]> => {
+    if (isSimulationMode || !ai) return getMockEbookQuiz();
+    const content = `${project.introduction} ${project.chapters.map(c => c.content).join(' ')} ${project.conclusion}`;
+    const prompt = `Based on the following ebook content, create a quiz with 5 multiple-choice questions to test understanding. Each question should have 4 options.
+    Content: "${content.substring(0, 4000)}..."`;
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: quizSchema,
+            },
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        handleApiError(error);
+        return getMockEbookQuiz();
+    }
+};
+
+// 11. Generate Video Script
+export const generateVideoScript = async (project: Project): Promise<VideoScript> => {
+    if (isSimulationMode || !ai) return getMockVideoScript();
+
+    const content = `${project.introduction}\n${project.chapters.map(c => `${c.title}\n${c.content}`).join('\n')}\n${project.conclusion}`;
+    const prompt = `Create a script for a short video based on this ebook content. The total video should be around 1 minute.
+    1. Break down the content into 3-5 short scenes.
+    2. For each scene, write a short narration (1-2 sentences).
+    3. For each scene, create a descriptive prompt (in English) for an AI video generator.
+    4. Combine all narrations into a single 'fullNarrationScript'.
+    Ebook content: "${content.substring(0, 4000)}"`;
+
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: videoScriptSchema,
+            },
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        handleApiError(error);
+        return getMockVideoScript();
+    }
+};
+
+// 12. Generate Video
+export const generateVideo = async (prompt: string): Promise<any> => {
+    if (isSimulationMode || !ai) return getMockVideoOperation();
+    try {
+        let operation = await ai.models.generateVideos({
             model: 'veo-2.0-generate-001',
             prompt: prompt,
-            config: { numberOfVideos: 1 },
+            config: { numberOfVideos: 1 }
         });
+        return operation;
     } catch (error) {
-        console.error("Error starting video generation:", error);
-        handleQuotaError(error);
-        return Mocks.getMockVideoOperation();
+        handleApiError(error);
+        return getMockVideoOperation();
     }
 };
 
-/**
- * Checks the status of a long-running video generation operation.
- */
-export const checkVideoOperationStatus = async (operation: any) => {
-    if (simulationModeEnabled || !ai) return operation; // If in sim mode, operation is already complete
+// 13. Check Video Operation Status
+export const checkVideoOperationStatus = async (operation: any): Promise<any> => {
+    if (isSimulationMode || !ai) return getMockVideoOperation(); // The mock resolves instantly
     try {
-        return await ai.operations.getVideosOperation({ operation });
+        const updatedOperation = await ai.operations.getVideosOperation({ operation: operation });
+        return updatedOperation;
     } catch (error) {
-        console.error("Error checking video operation status:", error);
-        handleQuotaError(error);
-        // Return the operation as-is so the polling doesn't break,
-        // though it might be stuck. The global banner is the main feedback.
-        return operation;
+        handleApiError(error);
+        throw error; // Let the caller handle the check failure
     }
 };
