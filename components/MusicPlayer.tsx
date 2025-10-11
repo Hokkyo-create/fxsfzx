@@ -124,10 +124,42 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
         if(mode === 'youtube' && youtubePlayerRef.current) youtubePlayerRef.current.seekTo(newTime, true);
     }
 
+    const switchMode = (newMode: 'playlist' | 'youtube') => {
+        if (mode === newMode) return;
+        
+        setIsPlaying(false);
+        setProgress(0);
+        setDuration(0);
+
+        if (newMode === 'playlist') {
+            if (youtubePlayerRef.current?.stopVideo) youtubePlayerRef.current.stopVideo();
+        } else {
+             if (audioRef.current) audioRef.current.pause();
+        }
+        setMode(newMode);
+    }
+
     const togglePlayPause = () => {
-        if (!currentPlaylistTrack && !youtubeTrack) return;
-        if (!isExpanded) setIsExpanded(true);
-        setIsPlaying(prev => !prev);
+        // Determine if there's a playable track in the current mode
+        const isCurrentlyPlayable = (mode === 'playlist' && currentPlaylistTrack) || (mode === 'youtube' && youtubeTrack);
+
+        if (isCurrentlyPlayable) {
+            // If something is loaded, just toggle play/pause state
+            setIsPlaying(prev => !prev);
+            // Also ensure the player is visible if it was somehow hidden
+            if (!isExpanded) {
+                setIsExpanded(true);
+            }
+        } else {
+            // Nothing is loaded in the current mode. Let's guide the user.
+            // First, expand the player so they see what's happening.
+            setIsExpanded(true);
+            // If the playlist is empty and they tried to play, switch them to the search tab.
+            if (mode === 'playlist' && playlist.length === 0) {
+                switchMode('youtube');
+            }
+            // Do not toggle isPlaying, as there's nothing to play yet.
+        }
     };
     
     const handleSearch = async (e: React.FormEvent) => {
@@ -153,21 +185,6 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
         youtubePlayerRef.current.loadVideoById(track.id);
         setIsPlaying(true);
     };
-
-    const switchMode = (newMode: 'playlist' | 'youtube') => {
-        if (mode === newMode) return;
-        
-        setIsPlaying(false);
-        setProgress(0);
-        setDuration(0);
-
-        if (newMode === 'playlist') {
-            if (youtubePlayerRef.current?.stopVideo) youtubePlayerRef.current.stopVideo();
-        } else {
-             if (audioRef.current) audioRef.current.pause();
-        }
-        setMode(newMode);
-    }
     
     return (
         <>
