@@ -41,6 +41,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
     const youtubePlayerRef = useRef<any>(null);
     const progressBarRef = useRef<HTMLDivElement>(null);
     const progressIntervalRef = useRef<number | null>(null);
+    const intentToPlayYoutube = useRef(false);
 
     const currentPlaylistTrack = playlist?.[currentTrackIndex];
     const currentTrack = mode === 'playlist' ? { title: currentPlaylistTrack?.title, artist: currentPlaylistTrack?.artist } : { title: youtubeTrack?.title, artist: youtubeTrack?.artist };
@@ -64,55 +65,66 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
 
     // Initialize YouTube Player
     useEffect(() => {
+        const onPlayerStateChange = (event: any) => {
+            // If a new video was loaded and we intended to play it, command it to play.
+            if (event.data === window.YT.PlayerState.UNSTARTED && intentToPlayYoutube.current) {
+                youtubePlayerRef.current.playVideo();
+                intentToPlayYoutube.current = false; // Reset intent after using it
+            }
+
+            // Use functional updates to avoid stale state in the callback
+            if (event.data === window.YT.PlayerState.PLAYING) {
+                setIsPlaying(currentIsPlaying => !currentIsPlaying ? true : currentIsPlaying);
+            } else if (event.data === window.YT.PlayerState.PAUSED) {
+                setIsPlaying(currentIsPlaying => currentIsPlaying ? false : currentIsPlaying);
+            } else if (event.data === window.YT.PlayerState.ENDED) {
+                setIsPlaying(false);
+                setProgress(0);
+            }
+        };
+
         const initYoutubePlayer = () => {
              youtubePlayerRef.current = new window.YT.Player('youtube-player', {
                 height: '1',
                 width: '1',
-                playerVars: { 'autoplay': 0, 'controls': 0 },
+                playerVars: { 'controls': 0 }, // Autoplay is unreliable, we'll control it manually
                 events: {
                     'onReady': () => console.log("YouTube Player Ready"),
-                    'onStateChange': (event: any) => {
-                        if (event.data === window.YT.PlayerState.ENDED) {
-                            setIsPlaying(false);
-                            setProgress(0);
-                        }
-                    }
+                    'onStateChange': onPlayerStateChange
                 }
             });
         }
         
-        if (!window.YT) {
+        if (typeof window.YT === 'undefined' || typeof window.YT.Player === 'undefined') {
             window.onYouTubeIframeAPIReady = initYoutubePlayer;
         } else if (!youtubePlayerRef.current) {
             initYoutubePlayer();
         }
     }, []);
     
-    // Main Play/Pause Logic
+    // Effect for handling progress bar and track changes
     useEffect(() => {
         cleanupProgressInterval();
 
         if (isPlaying) {
-            if (mode === 'playlist' && audioRef.current) {
-                audioRef.current.play().catch(e => console.error("Error playing audio:", e));
+             if (mode === 'playlist' && audioRef.current) {
+                if(audioRef.current.paused) {
+                    audioRef.current.play().catch(e => console.error("Error playing audio:", e));
+                }
                 progressIntervalRef.current = window.setInterval(() => {
                     setProgress(audioRef.current?.currentTime ?? 0);
                     setDuration(audioRef.current?.duration ?? 0);
                 }, 500);
-            } else if (mode === 'youtube' && youtubePlayerRef.current?.playVideo) {
-                youtubePlayerRef.current.playVideo();
+            } else if (mode === 'youtube' && youtubePlayerRef.current?.getCurrentTime) {
                 progressIntervalRef.current = window.setInterval(() => {
                     setProgress(youtubePlayerRef.current?.getCurrentTime() ?? 0);
                     setDuration(youtubePlayerRef.current?.getDuration() ?? 0);
                 }, 500);
             }
-        } else {
-            if (mode === 'playlist' && audioRef.current) audioRef.current.pause();
-            if (mode === 'youtube' && youtubePlayerRef.current?.pauseVideo) youtubePlayerRef.current.pauseVideo();
         }
 
         return cleanupProgressInterval;
-    }, [isPlaying, mode, currentTrackIndex, youtubeTrack]);
+    }, [isPlaying, mode, currentTrackIndex]);
 
     const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!progressBarRef.current || duration === 0) return;
@@ -122,6 +134,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
         
         if(mode === 'playlist' && audioRef.current) audioRef.current.currentTime = newTime;
         if(mode === 'youtube' && youtubePlayerRef.current) youtubePlayerRef.current.seekTo(newTime, true);
+        setProgress(newTime);
     }
 
     const switchMode = (newMode: 'playlist' | 'youtube') => {
@@ -140,25 +153,33 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
     }
 
     const togglePlayPause = () => {
-        // Determine if there's a playable track in the current mode
         const isCurrentlyPlayable = (mode === 'playlist' && currentPlaylistTrack) || (mode === 'youtube' && youtubeTrack);
 
         if (isCurrentlyPlayable) {
-            // If something is loaded, just toggle play/pause state
-            setIsPlaying(prev => !prev);
-            // Also ensure the player is visible if it was somehow hidden
+            const newIsPlaying = !isPlaying;
+            if (newIsPlaying) {
+                if (mode === 'playlist' && audioRef.current) {
+                    audioRef.current.play().catch(e => console.error("Audio play failed:", e));
+                } else if (mode === 'youtube' && youtubePlayerRef.current?.playVideo) {
+                    youtubePlayerRef.current.playVideo();
+                }
+            } else {
+                if (mode === 'playlist' && audioRef.current) {
+                    audioRef.current.pause();
+                } else if (mode === 'youtube' && youtubePlayerRef.current?.pauseVideo) {
+                    youtubePlayerRef.current.pauseVideo();
+                }
+            }
+            setIsPlaying(newIsPlaying);
+
             if (!isExpanded) {
                 setIsExpanded(true);
             }
         } else {
-            // Nothing is loaded in the current mode. Let's guide the user.
-            // First, expand the player so they see what's happening.
             setIsExpanded(true);
-            // If the playlist is empty and they tried to play, switch them to the search tab.
             if (mode === 'playlist' && playlist.length === 0) {
                 switchMode('youtube');
             }
-            // Do not toggle isPlaying, as there's nothing to play yet.
         }
     };
     
@@ -179,11 +200,15 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
     }
     
     const playYoutubeTrack = (track: YouTubeTrack) => {
+        if (!youtubePlayerRef.current) {
+            console.error("YouTube player is not ready to play.");
+            return;
+        }
         setYoutubeTrack(track);
-        setMode('youtube');
-        if (audioRef.current) audioRef.current.pause();
+        switchMode('youtube');
+        intentToPlayYoutube.current = true; // Signal our intent to play this video
         youtubePlayerRef.current.loadVideoById(track.id);
-        setIsPlaying(true);
+        // The onStateChange handler will now see the UNSTARTED event and play the video.
     };
     
     return (
@@ -192,6 +217,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                 ref={audioRef}
                 src={currentPlaylistTrack?.url}
                 onEnded={toNextTrack}
+                onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
                 preload="auto"
             />
             <div id="youtube-player" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
