@@ -235,10 +235,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                  <div 
                     className={`
                         bg-dark/90 backdrop-blur-sm border border-gray-700 rounded-lg shadow-lg flex flex-col
+                        w-[calc(100vw-3rem)] max-w-sm sm:w-[350px] max-h-[70vh] sm:max-h-[500px]
                         transition-all duration-300 ease-out origin-bottom-left
                         ${isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}
                     `}
-                    style={{width: '350px', maxHeight: '500px'}}
                 >
                     <div className="flex-shrink-0 p-3 pr-10 relative">
                         {/* Tabs */}
