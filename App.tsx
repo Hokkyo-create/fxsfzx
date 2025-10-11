@@ -34,6 +34,9 @@ const App: React.FC = () => {
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     
+    // PWA Install Prompt
+    const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+
     // Meeting state
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
     const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
@@ -51,6 +54,13 @@ const App: React.FC = () => {
 
 
     useEffect(() => {
+        // PWA install prompt handler
+        const handleBeforeInstallPrompt = (e: Event) => {
+            e.preventDefault();
+            setInstallPrompt(e);
+        };
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
         // Apply custom admin styles
         const customStyles = localStorage.getItem('arc7hive_custom_styles');
         if (customStyles) {
@@ -81,6 +91,10 @@ const App: React.FC = () => {
                 } catch (error) { console.error("Failed to parse progress", error); }
             }
         }
+        
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        };
     }, []);
 
     // Effect for Real-time Firebase Chat Sync
@@ -336,6 +350,7 @@ const App: React.FC = () => {
                     onClose={() => setIsProfileModalOpen(false)}
                     currentAvatar={currentUser.avatarUrl}
                     onSave={handleUpdateAvatar}
+                    installPrompt={installPrompt}
                 />
             )}
         </>
