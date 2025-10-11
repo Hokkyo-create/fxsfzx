@@ -3,7 +3,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash';
 
 export interface User {
   name: string;
@@ -73,4 +73,12 @@ export interface MeetingMessage {
     text: string;
     timestamp: number;
     avatarUrl: string; // Added for profile pictures
+}
+
+export interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  url: string;
+  storagePath: string; // Full path in Firebase Storage for deletion
 }

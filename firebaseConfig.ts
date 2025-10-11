@@ -8,6 +8,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
+import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -15,7 +16,7 @@ const firebaseConfig = {
   authDomain: "chat-44b2b.firebaseapp.com",
   databaseURL: "https://chat-44b2b-default-rtdb.firebaseio.com",
   projectId: "chat-44b2b",
-  storageBucket: "chat-44b2b.firebasestorage.app",
+  storageBucket: "chat-44b2b.appspot.com",
   messagingSenderId: "912911591389",
   appId: "1:912911591389:web:b748634a6b13808b227834",
   measurementId: "G-WY197CKX3N"
@@ -24,3 +25,4 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const database = getDatabase(app);
+export const storage = getStorage(app);

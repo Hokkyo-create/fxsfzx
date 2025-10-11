@@ -1,12 +1,14 @@
 // services/firebaseService.ts
-import { database } from '../firebaseConfig';
+import { database, storage } from '../firebaseConfig';
 import { ref, onValue, push, set, serverTimestamp, onDisconnect, remove, update } from "firebase/database";
-import type { MeetingMessage, OnlineUser, Project } from '../types';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import type { MeetingMessage, OnlineUser, Project, Song } from '../types';
 
 const MEETING_CHAT_REF = 'meeting_room/messages';
 const TYPING_STATUS_REF = 'meeting_room/typing';
 const ONLINE_STATUS_REF = 'meeting_room/online';
 const PROJECTS_REF = 'projects';
+const MUSIC_PLAYLIST_REF = 'music/playlist';
 
 // --- Listener Setup ---
 
@@ -55,6 +57,19 @@ export const setupProjectsListener = (callback: (projects: Project[]) => void) =
     });
     return unsubscribe;
 };
+
+export const setupPlaylistListener = (callback: (playlist: Song[]) => void) => {
+    const playlistRef = ref(database, MUSIC_PLAYLIST_REF);
+    const unsubscribe = onValue(playlistRef, (snapshot) => {
+        const data = snapshot.val();
+        const playlistArray: Song[] = data ? Object.entries(data).map(([id, song]) => ({
+            id,
+            ...(song as Omit<Song, 'id'>)
+        })) : [];
+        callback(playlistArray);
+    });
+    return unsubscribe;
+}
 
 // --- Actions ---
 
@@ -125,3 +140,37 @@ export const goOffline = (userName: string) => {
     const userStatusRef = ref(database, `${ONLINE_STATUS_REF}/${userName}`);
     remove(userStatusRef);
 }
+
+// --- Music Actions ---
+export const uploadSong = async (file: File, title: string, artist: string): Promise<void> => {
+    if (!file.type.startsWith('audio/')) throw new Error("File is not an audio type.");
+
+    const storagePath = `music/${Date.now()}_${file.name}`;
+    const songStorageRef = storageRef(storage, storagePath);
+
+    // 1. Upload the file
+    const uploadResult = await uploadBytes(songStorageRef, file);
+    
+    // 2. Get the download URL
+    const downloadURL = await getDownloadURL(uploadResult.ref);
+
+    // 3. Save metadata to Realtime Database
+    const playlistRef = ref(database, MUSIC_PLAYLIST_REF);
+    const newSongRef = push(playlistRef);
+    await set(newSongRef, {
+        title,
+        artist,
+        url: downloadURL,
+        storagePath: storagePath
+    });
+};
+
+export const deleteSong = async (song: Song): Promise<void> => {
+    // 1. Delete from Storage
+    const songStorageRef = storageRef(storage, song.storagePath);
+    await deleteObject(songStorageRef);
+
+    // 2. Delete from Realtime Database
+    const songDbRef = ref(database, `${MUSIC_PLAYLIST_REF}/${song.id}`);
+    await remove(songDbRef);
+};

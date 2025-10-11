@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
-import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig } from './types';
+import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Song } from './types';
 import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
@@ -21,7 +21,8 @@ import {
     sendMessage,
     updateTypingStatus,
     updateUserPresence,
-    goOffline
+    goOffline,
+    setupPlaylistListener
 } from './services/firebaseService';
 
 const App: React.FC = () => {
@@ -44,6 +45,9 @@ const App: React.FC = () => {
     const [isProjectsOpen, setIsProjectsOpen] = useState(false);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [generatingProjectConfig, setGeneratingProjectConfig] = useState<ProjectGenerationConfig | null>(null);
+
+    // Music Player state
+    const [playlist, setPlaylist] = useState<Song[]>([]);
 
 
     useEffect(() => {
@@ -107,6 +111,12 @@ const App: React.FC = () => {
             goOffline(currentUser.name);
         };
     }, [currentUser]);
+
+    // Effect for Firebase Playlist Sync
+    useEffect(() => {
+        const unsubscribe = setupPlaylistListener(setPlaylist);
+        return () => unsubscribe();
+    }, []);
     
     useEffect(() => {
         if (currentUser) {
@@ -316,7 +326,7 @@ const App: React.FC = () => {
         <>
             {renderContent()}
             {showChatbot && <Chatbot />}
-            {showMusicPlayer && <MusicPlayer />}
+            {showMusicPlayer && <MusicPlayer playlist={playlist} />}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
                 <AdminPanel onClose={handleToggleAdminPanel} />
             )}
