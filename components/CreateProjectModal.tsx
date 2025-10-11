@@ -22,8 +22,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
             setError('Por favor, insira um tópico para o projeto.');
             return;
         }
-        if (chapters < 1 || chapters > 100) {
-            setError('O número de capítulos deve estar entre 1 e 100.');
+        if (chapters < 1) {
+            setError('O número de capítulos deve ser pelo menos 1.');
             return;
         }
         setError('');
@@ -63,7 +63,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
                            value={chapters}
                            onChange={(e) => setChapters(parseInt(e.target.value, 10))}
                            min="1"
-                           max="100"
                            className="w-full bg-gray-900 border border-gray-700 rounded-md py-2 px-4 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition"
                        />
                     </div>

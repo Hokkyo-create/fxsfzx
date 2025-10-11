@@ -204,7 +204,7 @@ export async function* generateEbookProjectStream(topic: string, chapters: numbe
     const ebookSystemInstruction = `Você é um autor de ebooks especialista. Sua tarefa é gerar um ebook completo sobre um tópico. A saída DEVE ser em Markdown e seguir esta estrutura RIGOROSAMENTE:
 1.  **Título:** A primeira linha DEVE ser o título, começando com '# '. Exemplo: '# O Guia Completo de Marketing Digital'
 2.  **Introdução:** Comece com a tag '[INTRODUÇÃO]' em uma nova linha, seguida pelo conteúdo da introdução.
-3.  **Capítulos:** Gere exatamente ${chapters} capítulos. Cada um DEVE começar com a tag '[CAPÍTULO X: Título do Capítulo]' em sua própria linha.
+3.  **Capítulos:** Gere exatamente ${chapters} capítulos. É CRUCIAL que você gere exatamente o número de capítulos solicitado. Cada um DEVE começar com a tag '[CAPÍTULO X: Título do Capítulo]' em sua própria linha.
 4.  **Conteúdo do Capítulo:** Para cada capítulo, escreva pelo menos 3-4 parágrafos de conteúdo detalhado.
 5.  **Conclusão:** Termine com a tag '[CONCLUSÃO]' em uma nova linha, seguida pelo parágrafo de conclusão.
 Responda APENAS com o conteúdo do ebook. Não inclua nenhuma conversa ou explicação adicional.`;

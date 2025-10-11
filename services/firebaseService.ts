@@ -1,6 +1,6 @@
 // services/firebaseService.ts
 import { database } from '../firebaseConfig';
-import { ref, onValue, push, set, serverTimestamp, onDisconnect, remove } from "firebase/database";
+import { ref, onValue, push, set, serverTimestamp, onDisconnect, remove, update } from "firebase/database";
 import type { MeetingMessage, OnlineUser, Project } from '../types';
 
 const MEETING_CHAT_REF = 'meeting_room/messages';
@@ -65,6 +65,11 @@ export const createProject = (projectData: Omit<Project, 'id' | 'createdAt'>) =>
         ...projectData,
         createdAt: serverTimestamp()
     });
+};
+
+export const updateProject = (projectId: string, updatedData: Partial<Project>) => {
+    const projectRef = ref(database, `${PROJECTS_REF}/${projectId}`);
+    return update(projectRef, updatedData);
 };
 
 export const sendMessage = (user: string, text: string, avatarUrl: string) => {

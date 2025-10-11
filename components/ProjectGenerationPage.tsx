@@ -3,6 +3,8 @@ import type { User, Project, Chapter } from '../types';
 import Icon from './Icons';
 import { generateEbookProjectStream, generateImagePromptForText, generateImage } from '../services/geminiService';
 import { createProject } from '../services/firebaseService';
+import { downloadProjectAsPdf } from '../utils/pdfGenerator';
+import EditImageModal from './EditImageModal';
 
 interface ProjectGenerationConfig {
     topic: string;
@@ -16,9 +18,10 @@ interface ProjectGenerationPageProps {
 }
 
 type GenerationStatus = 'generating-text' | 'parsing-text' | 'generating-images' | 'completed' | 'error';
+type EditableProject = Omit<Project, 'id' | 'createdBy' | 'avatarUrl' | 'createdAt'>;
 
 // Helper function to parse the raw markdown into a structured Project object
-const parseEbookContent = (markdown: string, topic: string): Omit<Project, 'id' | 'createdBy' | 'avatarUrl' | 'createdAt'> => {
+const parseEbookContent = (markdown: string, topic: string): EditableProject => {
     const lines = markdown.split('\n');
     const title = lines.find(line => line.startsWith('# '))?.substring(2).trim() || topic;
     
@@ -26,21 +29,17 @@ const parseEbookContent = (markdown: string, topic: string): Omit<Project, 'id' 
     const chapters: Chapter[] = [];
     let conclusion = '';
     
-    let currentSection: 'intro' | 'chapter' | 'conclusion' | null = null;
-    let currentChapterContent: string[] = [];
-    let currentChapterTitle = '';
-
-    const introMatch = markdown.match(/\[INTRODUÇÃO\]([\s\S]*?)\[CAPÍTULO 1:/);
-    introduction = introMatch ? introMatch[1].trim() : '';
+    const introMatch = markdown.match(/\[INTRODUÇÃO\]([\s\S]*?)(\[CAPÍTULO 1:|\n\n)/);
+    introduction = introMatch ? introMatch[1].trim() : 'Introdução não encontrada.';
     
     const conclusionMatch = markdown.match(/\[CONCLUSÃO\]([\s\S]*)/);
-    conclusion = conclusionMatch ? conclusionMatch[1].trim() : '';
+    conclusion = conclusionMatch ? conclusionMatch[1].trim() : 'Conclusão não encontrada.';
 
     const chapterRegex = /\[CAPÍTULO (\d+): (.*?)\]([\s\S]*?)(?=\[CAPÍTULO|\[CONCLUSÃO\]|$)/g;
     let match;
     while((match = chapterRegex.exec(markdown)) !== null) {
         chapters.push({
-            title: `Capítulo ${match[1]}: ${match[2]}`,
+            title: `Capítulo ${match[1]}: ${match[2].trim()}`,
             content: match[3].trim(),
         });
     }
@@ -50,21 +49,23 @@ const parseEbookContent = (markdown: string, topic: string): Omit<Project, 'id' 
         introduction,
         chapters,
         conclusion,
-        coverImageUrl: '',
     };
 };
 
 
 const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, user, onFinish }) => {
     const [rawContent, setRawContent] = useState('');
-    const [projectData, setProjectData] = useState<Omit<Project, 'id' | 'createdBy' | 'avatarUrl' | 'createdAt' | 'coverImageUrl'> & { coverImageUrl?: string } | null>(null);
+    const [projectData, setProjectData] = useState<EditableProject | null>(null);
     const [status, setStatus] = useState<GenerationStatus>('generating-text');
     const [statusMessage, setStatusMessage] = useState('Gerando conteúdo do ebook...');
     const [imageGenerationProgress, setImageGenerationProgress] = useState({ current: 0, total: 0 });
     const [error, setError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [editingImage, setEditingImage] = useState<{ type: 'cover' | 'chapter'; index: number; } | null>(null);
     
     const contentEndRef = useRef<HTMLDivElement>(null);
+    const printableAreaRef = useRef<HTMLDivElement>(null);
     
     useEffect(() => {
         const generate = async () => {
@@ -99,15 +100,14 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                 setImageGenerationProgress({ current: 1, total: totalImages });
 
                 // Generate Chapter Images
-                const updatedChapters: Chapter[] = [];
+                const updatedChapters: Chapter[] = [...parsedData.chapters];
                 for (let i = 0; i < parsedData.chapters.length; i++) {
                     const chapter = parsedData.chapters[i];
                     setStatusMessage(`Gerando imagem para o Capítulo ${i + 1}... (${i + 2}/${totalImages})`);
                     const prompt = await generateImagePromptForText(chapter.title, chapter.content);
                     const imageBase64 = await generateImage(prompt);
-                    const imageUrl = `data:image/png;base64,${imageBase64}`;
-                    updatedChapters.push({ ...chapter, imageUrl });
-                    setProjectData(prev => prev ? { ...prev, chapters: [...updatedChapters, ...parsedData.chapters.slice(i + 1)] } : null);
+                    updatedChapters[i].imageUrl = `data:image/png;base64,${imageBase64}`;
+                    setProjectData(prev => prev ? { ...prev, chapters: [...updatedChapters] } : null);
                     setImageGenerationProgress({ current: i + 2, total: totalImages });
                 }
                 
@@ -132,36 +132,111 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
     const handleSaveProject = async () => {
         if (!projectData) return;
         setIsSaving(true);
+        setError(null);
         try {
-            await createProject({
-                ...projectData,
+            const projectToSave: Omit<Project, 'id' | 'createdAt'> = {
+                name: projectData.name || 'Projeto Sem Título',
+                introduction: projectData.introduction || '',
+                chapters: projectData.chapters || [],
+                conclusion: projectData.conclusion || '',
+                coverImageUrl: projectData.coverImageUrl || '',
                 createdBy: user.name,
                 avatarUrl: user.avatarUrl,
-            });
+            };
+            await createProject(projectToSave);
             onFinish();
         } catch(e) {
-            setError("Falha ao salvar o projeto.");
-            console.error(e);
+            setError("Falha ao salvar o projeto no banco de dados. Tente novamente.");
+            console.error("Firebase save error:", e);
             setIsSaving(false);
         }
     };
 
-    const StatusIndicator = () => {
-        const color = status === 'completed' ? 'text-green-400' : status === 'error' ? 'text-red-400' : 'text-yellow-400';
-        let message = statusMessage;
-        if (status === 'generating-images') {
-            message = `${statusMessage} ${imageGenerationProgress.current}/${imageGenerationProgress.total}`;
+    const handleDownload = async () => {
+        if (!printableAreaRef.current || !projectData) return;
+        setIsDownloading(true);
+        await downloadProjectAsPdf(printableAreaRef.current, projectData.name);
+        setIsDownloading(false);
+    }
+    
+    const handleRegenerateImage = async (newPrompt: string): Promise<string> => {
+        const imageBase64 = await generateImage(newPrompt);
+        return `data:image/png;base64,${imageBase64}`;
+    };
+
+    const handleSaveImage = (newImageUrl: string) => {
+        if (!editingImage || !projectData) return;
+
+        if (editingImage.type === 'cover') {
+            setProjectData({ ...projectData, coverImageUrl: newImageUrl });
+        } else {
+            const updatedChapters = [...projectData.chapters];
+            updatedChapters[editingImage.index].imageUrl = newImageUrl;
+            setProjectData({ ...projectData, chapters: updatedChapters });
+        }
+        setEditingImage(null);
+    };
+    
+     const getPromptForImage = async (): Promise<string> => {
+        if (!editingImage || !projectData) return '';
+        if (editingImage.type === 'cover') {
+            return await generateImagePromptForText(projectData.name, projectData.introduction);
+        } else {
+            const chapter = projectData.chapters[editingImage.index];
+            return await generateImagePromptForText(chapter.title, chapter.content);
+        }
+    };
+
+
+    const renderContent = () => {
+        if (status === 'generating-text') {
+            return (
+                <>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{rawContent}</div>
+                    <span className="w-1 h-6 bg-gray-300 inline-block animate-blinking-cursor"></span>
+                </>
+            );
         }
 
-        return (
-             <div className={`flex items-center gap-2 text-sm ${color}`}>
-                 <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                {message}
-            </div>
-        )
+        if (projectData) {
+             return (
+                 <div ref={printableAreaRef} className="bg-darker text-white p-4">
+                     {projectData.coverImageUrl && (
+                         <div className="w-full aspect-[3/4] max-h-[800px] bg-black mx-auto mb-8">
+                            <img src={projectData.coverImageUrl} alt={`Capa de ${projectData.name}`} className="w-full h-full object-contain" />
+                         </div>
+                     )}
+                     <div className="max-w-4xl mx-auto">
+                        <h1 className="text-4xl md:text-5xl font-display text-white mb-8 border-b-2 border-brand-red pb-4">{projectData.name}</h1>
+                        <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">Introdução</h3>
+                        <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{projectData.introduction}</p>
+                        {projectData.chapters.map((chapter, index) => (
+                            <div key={index}>
+                                <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">{chapter.title}</h3>
+                                {chapter.imageUrl ? (
+                                    <div className="my-6 animate-fade-in">
+                                        <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full rounded-lg object-cover" />
+                                    </div>
+                                ) : (
+                                    status === 'generating-images' && imageGenerationProgress.current >= index + 2 &&
+                                    <div className="my-6 w-full aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
+                                        <svg className="animate-spin h-8 w-8 text-brand-red" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    </div>
+                                )}
+                                <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{chapter.content}</p>
+                            </div>
+                        ))}
+                        <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">Conclusão</h3>
+                        <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{projectData.conclusion}</p>
+                     </div>
+                 </div>
+            )
+        }
+        return null;
     }
 
     return (
+        <>
         <div className="min-h-screen bg-darker text-white font-sans flex flex-col animate-fade-in">
             <header className="bg-dark border-b border-gray-900 sticky top-0 z-20 flex-shrink-0">
                 <div className="container mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
@@ -173,7 +248,12 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
-                        {status !== 'completed' && status !== 'error' && <StatusIndicator />}
+                        {status !== 'completed' && status !== 'error' && (
+                             <div className={`flex items-center gap-2 text-sm text-yellow-400`}>
+                                 <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                {`${statusMessage} ${status === 'generating-images' ? `(${imageGenerationProgress.current}/${imageGenerationProgress.total})` : ''}`}
+                            </div>
+                        )}
                         <button onClick={onFinish} className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-md transition-colors" title="Cancelar e Voltar">
                             <Icon name="X" className="w-5 h-5" />
                         </button>
@@ -182,69 +262,59 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
             </header>
 
             <div className="flex-grow container mx-auto px-4 sm:px-6 py-8 flex flex-col md:flex-row gap-8 overflow-hidden">
-                {/* Outline Sidebar */}
                 <aside className="md:w-1/3 lg:w-1/4 flex-shrink-0 bg-dark/50 border border-gray-800 rounded-lg p-6 h-full flex flex-col">
                      <h2 className="font-display text-xl text-white border-b border-gray-700 pb-3 mb-4">Estrutura do Ebook</h2>
-                     <ul className="space-y-3 mb-6 flex-grow overflow-y-auto">
-                        {projectData?.name && <li className="font-bold text-white animate-fade-in-up">{projectData.name}</li>}
+                     <div className="flex-grow overflow-y-auto space-y-3 mb-6 pr-2">
+                        {projectData?.coverImageUrl && (
+                            <div className="relative group">
+                                <h3 className="font-bold text-white animate-fade-in-up">Capa do Ebook</h3>
+                                <div className="mt-2 aspect-[3/4] w-full bg-gray-900 rounded-md flex items-center justify-center">
+                                    <img src={projectData.coverImageUrl} alt="Capa gerada" className="w-full h-full object-cover rounded-md" />
+                                </div>
+                                 <button onClick={() => setEditingImage({ type: 'cover', index: -1 })} className="absolute top-8 right-0 p-2 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Icon name="Pencil" className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
                         {projectData?.chapters.map((chapter, index) => (
-                             <li key={index} className="text-gray-300 animate-fade-in-up" style={{animationDelay: `${index * 50}ms`}}>{chapter.title}</li>
+                             <div key={index} className="text-gray-300 animate-fade-in-up relative group" style={{animationDelay: `${index * 50}ms`}}>
+                                <h3 className="font-semibold text-gray-100 mt-4">{chapter.title}</h3>
+                                {chapter.imageUrl && (
+                                     <div className="mt-2 aspect-video w-full bg-gray-900 rounded-md flex items-center justify-center">
+                                        <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full h-full object-cover rounded-md" />
+                                     </div>
+                                )}
+                                 {chapter.imageUrl && (
+                                    <button onClick={() => setEditingImage({ type: 'chapter', index })} className="absolute top-12 right-0 p-2 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Icon name="Pencil" className="w-4 h-4" />
+                                    </button>
+                                 )}
+                             </div>
                         ))}
-                     </ul>
-                     <div className="mt-auto">
-                        <h3 className="font-display text-lg text-white mb-2">Capa do Ebook</h3>
-                        <div className="aspect-[3/4] w-full bg-gray-900 rounded-md flex items-center justify-center">
-                           {status === 'generating-images' && imageGenerationProgress.current < 1 && <svg className="animate-spin h-8 w-8 text-brand-red" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
-                           {projectData?.coverImageUrl && <img src={projectData.coverImageUrl} alt="Capa gerada" className="w-full h-full object-cover rounded-md" />}
-                        </div>
                      </div>
                 </aside>
 
-                {/* Content Viewer */}
                 <main className="md:w-2/3 lg:w-3/4 bg-dark/50 border border-gray-800 rounded-lg h-full flex flex-col">
-                    <div className="flex-grow p-8 md:p-12 overflow-y-auto">
-                        {status === 'generating-text' && (
-                            <>
-                                <div style={{ whiteSpace: 'pre-wrap' }}>{rawContent}</div>
-                                <span className="w-1 h-6 bg-gray-300 inline-block animate-blinking-cursor"></span>
-                            </>
-                        )}
-                        {status !== 'generating-text' && projectData && (
-                            <div>
-                                <h1 className="text-4xl md:text-5xl font-display text-white mb-8 border-b-2 border-brand-red pb-4">{projectData.name}</h1>
-                                <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">Introdução</h3>
-                                <p className="text-gray-300 leading-relaxed">{projectData.introduction}</p>
-                                {projectData.chapters.map((chapter, index) => (
-                                    <div key={index}>
-                                        <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">{chapter.title}</h3>
-                                        {chapter.imageUrl ? (
-                                            <div className="my-6 animate-fade-in">
-                                                <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full rounded-lg object-cover" />
-                                            </div>
-                                        ) : (
-                                             status === 'generating-images' && imageGenerationProgress.current >= index + 2 &&
-                                            <div className="my-6 w-full aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
-                                                <svg className="animate-spin h-8 w-8 text-brand-red" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                            </div>
-                                        )}
-                                        <p className="text-gray-300 leading-relaxed">{chapter.content}</p>
-                                    </div>
-                                ))}
-                                <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">Conclusão</h3>
-                                <p className="text-gray-300 leading-relaxed">{projectData.conclusion}</p>
-                            </div>
-                        )}
-                        
-                        {status === 'error' && <p className="text-red-400 mt-4">Erro: {error}</p>}
+                    <div className="flex-grow p-1 md:p-2 overflow-y-auto">
+                        {renderContent()}
+                        {status === 'error' && <p className="text-red-400 mt-4 p-8">Erro: {error}</p>}
                         <div ref={contentEndRef}></div>
                     </div>
 
                     {status === 'completed' && (
-                        <div className="flex-shrink-0 p-4 border-t border-gray-800 bg-dark/80 backdrop-blur-sm">
+                        <div className="flex-shrink-0 p-4 border-t border-gray-800 bg-dark/80 backdrop-blur-sm flex flex-col sm:flex-row gap-3">
+                            <button
+                                onClick={handleDownload}
+                                disabled={isDownloading}
+                                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:bg-gray-600"
+                            >
+                                <Icon name="Download" className="w-5 h-5" />
+                                {isDownloading ? 'Gerando PDF...' : 'Baixar PDF'}
+                            </button>
                             <button
                                 onClick={handleSaveProject}
                                 disabled={isSaving}
-                                className="w-full flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed"
                             >
                                 {isSaving ? 'Salvando...' : 'Salvar Projeto na Nuvem'}
                             </button>
@@ -253,6 +323,18 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                 </main>
             </div>
         </div>
+        
+        {editingImage && projectData && (
+            <EditImageModal
+                isOpen={!!editingImage}
+                onClose={() => setEditingImage(null)}
+                imageUrl={editingImage.type === 'cover' ? projectData.coverImageUrl : projectData.chapters[editingImage.index].imageUrl}
+                getInitialPrompt={getPromptForImage}
+                onRegenerate={handleRegenerateImage}
+                onSave={handleSaveImage}
+            />
+        )}
+        </>
     );
 };
 
