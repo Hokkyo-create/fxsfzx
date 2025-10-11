@@ -19,16 +19,19 @@ const StitchedVideoPlayer: React.FC<StitchedVideoPlayerProps> = ({ script, video
     useEffect(() => {
         const fetchVideos = async () => {
             setIsLoading(true);
-            const apiKey = process.env.API_KEY;
+            // Safely get the API key
+            const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
             
             try {
                 const blobUrls = await Promise.all(
                     videoUrls.map(async (uri) => {
                         const isApiUrl = uri.includes('generativelanguage.googleapis.com');
                         if (isApiUrl && !apiKey) {
-                            throw new Error("API_KEY is required to fetch generated videos.");
+                           console.warn("API_KEY not found, cannot fetch generated video. This is expected in simulation mode.");
+                           // In simulation, the URI is often a direct placeholder URL, so we can just use it.
+                           // If it's a real API URL and we have no key, this fetch will fail, which is handled below.
                         }
-                        const fetchUrl = isApiUrl ? `${uri}&key=${apiKey}` : uri;
+                        const fetchUrl = isApiUrl && apiKey ? `${uri}&key=${apiKey}` : uri;
                         const response = await fetch(fetchUrl);
                         if (!response.ok) {
                             throw new Error(`Failed to fetch video from ${uri}`);

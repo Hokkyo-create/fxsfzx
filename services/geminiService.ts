@@ -17,21 +17,27 @@ import * as Mocks from './geminiServiceMocks';
 let ai: GoogleGenAI | null = null;
 let simulationModeEnabled = false;
 
-// Attempt to initialize the AI client. If it fails (e.g., missing API key on Vercel),
-// enable simulation mode globally so the app doesn't crash with a black screen.
-try {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-        throw new Error("API_KEY environment variable is not set.");
+// Wrap in a function for safer execution
+const initializeAi = () => {
+    try {
+        // Safely check for the existence of process and env variables
+        const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
+
+        if (!apiKey) {
+            throw new Error("API_KEY environment variable is not set or not accessible in this environment.");
+        }
+        ai = new GoogleGenAI({ apiKey });
+    } catch (error) {
+        console.warn("Could not initialize Gemini AI, forcing simulation mode. Error:", (error as Error).message);
+        simulationModeEnabled = true;
+        // Dispatch the event right away if initialization fails on load.
+        // Use a timeout to ensure the App component has mounted its listener.
+        setTimeout(() => window.dispatchEvent(new CustomEvent('quotaExceeded')), 0);
     }
-    ai = new GoogleGenAI({ apiKey });
-} catch (error) {
-    console.warn("Could not initialize Gemini AI, forcing simulation mode. Error:", (error as Error).message);
-    simulationModeEnabled = true;
-    // Dispatch the event right away if initialization fails on load.
-    // Use a timeout to ensure the App component has mounted its listener.
-    setTimeout(() => window.dispatchEvent(new CustomEvent('quotaExceeded')), 0);
-}
+};
+
+// Initialize on module load
+initializeAi();
 
 
 /**
