@@ -65,32 +65,6 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
         }
     };
 
-    // Effect to handle "click outside to close" on mobile
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            // Only on mobile, when expanded, and click is outside the player panel and toggle button
-            if (
-                window.innerWidth < 640 &&
-                isExpanded &&
-                playerContainerRef.current &&
-                !playerContainerRef.current.contains(event.target as Node) &&
-                toggleButtonRef.current &&
-                !toggleButtonRef.current.contains(event.target as Node)
-            ) {
-                setIsExpanded(false);
-            }
-        };
-
-        if (isExpanded) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isExpanded]);
-
-
     // Initialize YouTube Player
     useEffect(() => {
         const onPlayerStateChange = (event: any) => {
@@ -249,6 +223,15 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                 preload="auto"
             />
             <div id="youtube-player" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
+            
+            {/* Click-outside overlay for mobile */}
+            {isExpanded && (
+                <div
+                    className="fixed inset-0 z-40 bg-transparent sm:hidden"
+                    onClick={() => setIsExpanded(false)}
+                    aria-hidden="true"
+                ></div>
+            )}
             
             <div className="fixed bottom-4 left-4 right-4 sm:left-8 sm:right-auto z-50 flex items-end gap-3">
                  <button
