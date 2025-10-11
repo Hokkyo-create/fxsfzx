@@ -12,18 +12,27 @@ import type {
 } from '../types';
 import * as Mocks from './geminiServiceMocks';
 
-// According to guidelines, API key must come from process.env.API_KEY
-const apiKey = process.env.API_KEY;
-if (!apiKey) {
-    throw new Error("API_KEY environment variable is not set.");
-}
-const ai = new GoogleGenAI({ apiKey });
+// --- Initialization ---
 
-/**
- * Global flag to determine if the app should use mocked data.
- * This is activated when a quota error is first detected.
- */
+let ai: GoogleGenAI | null = null;
 let simulationModeEnabled = false;
+
+// Attempt to initialize the AI client. If it fails (e.g., missing API key on Vercel),
+// enable simulation mode globally so the app doesn't crash with a black screen.
+try {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        throw new Error("API_KEY environment variable is not set.");
+    }
+    ai = new GoogleGenAI({ apiKey });
+} catch (error) {
+    console.warn("Could not initialize Gemini AI, forcing simulation mode. Error:", (error as Error).message);
+    simulationModeEnabled = true;
+    // Dispatch the event right away if initialization fails on load.
+    // Use a timeout to ensure the App component has mounted its listener.
+    setTimeout(() => window.dispatchEvent(new CustomEvent('quotaExceeded')), 0);
+}
+
 
 /**
  * Called by the UI layer (App.tsx) to globally enable simulation mode.
@@ -50,7 +59,7 @@ const handleQuotaError = (error: unknown): void => {
  * Gets a response from the AI for the meeting chat.
  */
 export const getMeetingChatResponse = async (prompt: string, history: MeetingMessage[]): Promise<string> => {
-    if (simulationModeEnabled) return Mocks.getMockMeetingChatResponse();
+    if (simulationModeEnabled || !ai) return Mocks.getMockMeetingChatResponse();
     try {
         const model = 'gemini-2.5-flash';
         const systemInstruction = `You are ARC7, a helpful AI assistant integrated into the ARC7HIVE learning platform's meeting room. 
@@ -83,7 +92,7 @@ export const getMeetingChatResponse = async (prompt: string, history: MeetingMes
  * Finds more YouTube videos for a learning category.
  */
 export const findMoreVideos = async (categoryTitle: string, existingVideoIds: string[]): Promise<Video[]> => {
-    if (simulationModeEnabled) return Mocks.getMockFindMoreVideos();
+    if (simulationModeEnabled || !ai) return Mocks.getMockFindMoreVideos();
     try {
         const model = 'gemini-2.5-flash';
         const prompt = `Encontre 5 vídeos adicionais no YouTube sobre o tópico "${categoryTitle}" usando o Google Search. 
@@ -116,7 +125,7 @@ export const findMoreVideos = async (categoryTitle: string, existingVideoIds: st
  * Gets a response from the AI for the general chatbot.
  */
 export const getChatbotResponse = async (prompt: string, history: ChatMessage[]): Promise<string> => {
-    if (simulationModeEnabled) return Mocks.getMockChatbotResponse();
+    if (simulationModeEnabled || !ai) return Mocks.getMockChatbotResponse();
     try {
         const model = 'gemini-2.5-flash';
         const systemInstruction = `You are ARC7, a friendly and helpful AI assistant for the ARC7HIVE learning platform...`; // (Full instruction omitted for brevity)
@@ -145,7 +154,7 @@ export const getChatbotResponse = async (prompt: string, history: ChatMessage[])
  * Generates CSS code from a text prompt for live styling.
  */
 export const generateLiveStyles = async (prompt: string): Promise<string> => {
-    if (simulationModeEnabled) return Mocks.getMockLiveStyles();
+    if (simulationModeEnabled || !ai) return Mocks.getMockLiveStyles();
     try {
         const model = 'gemini-2.5-flash';
         const systemInstruction = `You are an AI that generates CSS code...`; // (Full instruction omitted for brevity)
@@ -170,7 +179,7 @@ export const generateLiveStyles = async (prompt: string): Promise<string> => {
  * Generates an image generation prompt based on text content.
  */
 export const generateImagePromptForText = async (title: string, content: string): Promise<string> => {
-    if (simulationModeEnabled) return Mocks.getMockImagePrompt();
+    if (simulationModeEnabled || !ai) return Mocks.getMockImagePrompt();
      try {
         const model = 'gemini-2.5-flash';
         const systemInstruction = `You are an AI assistant that creates concise, descriptive, and artistic image generation prompts in English...`; // (Full instruction omitted for brevity)
@@ -193,7 +202,7 @@ export const generateImagePromptForText = async (title: string, content: string)
  * Generates an image from a prompt and returns the base64 encoded string.
  */
 export const generateImage = async (prompt: string): Promise<string> => {
-    if (simulationModeEnabled) return Mocks.getMockImageBase64();
+    if (simulationModeEnabled || !ai) return Mocks.getMockImageBase64();
     try {
         const response = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
@@ -216,7 +225,7 @@ export const generateImage = async (prompt: string): Promise<string> => {
  * Generates the content of an ebook as a stream.
  */
 export const generateEbookProjectStream = async function*(topic: string, chapters: number): AsyncGenerator<string> {
-    if (simulationModeEnabled) {
+    if (simulationModeEnabled || !ai) {
         for (const chunk of Mocks.getMockEbookStream()) {
             yield chunk;
             await new Promise(resolve => setTimeout(resolve, 50));
@@ -250,7 +259,7 @@ export const generateEbookProjectStream = async function*(topic: string, chapter
  * Generates alternative prompt ideas for image generation.
  */
 export const generatePromptIdeas = async (originalPrompt: string): Promise<string[]> => {
-    if (simulationModeEnabled) return Mocks.getMockPromptIdeas();
+    if (simulationModeEnabled || !ai) return Mocks.getMockPromptIdeas();
     try {
         const model = 'gemini-2.5-flash';
         const response = await ai.models.generateContent({
@@ -274,7 +283,7 @@ export const generatePromptIdeas = async (originalPrompt: string): Promise<strin
  * Searches for music on YouTube.
  */
 export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
-    if (simulationModeEnabled) return Mocks.getMockYouTubeMusic();
+    if (simulationModeEnabled || !ai) return Mocks.getMockYouTubeMusic();
     try {
         const model = 'gemini-2.5-flash';
         const prompt = `Encontre 5 vídeos de música no YouTube para a busca: "${query}" usando o Google Search...`; // (Full prompt omitted)
@@ -301,7 +310,7 @@ export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]>
  * Generates a quiz based on the content of an ebook project.
  */
 export const generateEbookQuiz = async (project: Project): Promise<QuizQuestion[]> => {
-    if (simulationModeEnabled) return Mocks.getMockEbookQuiz();
+    if (simulationModeEnabled || !ai) return Mocks.getMockEbookQuiz();
     try {
         const model = 'gemini-2.5-flash';
         const fullText = `Title: ${project.name}\nIntroduction: ${project.introduction}\n` +
@@ -334,7 +343,7 @@ export const generateEbookQuiz = async (project: Project): Promise<QuizQuestion[
  * Generates a video script from an ebook project.
  */
 export const generateVideoScript = async (project: Project): Promise<VideoScript> => {
-    if (simulationModeEnabled) return Mocks.getMockVideoScript();
+    if (simulationModeEnabled || !ai) return Mocks.getMockVideoScript();
     try {
         const model = 'gemini-2.5-flash';
         const fullText = `Title: ${project.name}...`; // (Full text omitted)
@@ -361,7 +370,7 @@ export const generateVideoScript = async (project: Project): Promise<VideoScript
  * Starts the video generation process for a given prompt.
  */
 export const generateVideo = async (prompt: string) => {
-    if (simulationModeEnabled) return Mocks.getMockVideoOperation();
+    if (simulationModeEnabled || !ai) return Mocks.getMockVideoOperation();
     try {
         return await ai.models.generateVideos({
             model: 'veo-2.0-generate-001',
@@ -379,7 +388,7 @@ export const generateVideo = async (prompt: string) => {
  * Checks the status of a long-running video generation operation.
  */
 export const checkVideoOperationStatus = async (operation: any) => {
-    if (simulationModeEnabled) return operation; // If in sim mode, operation is already complete
+    if (simulationModeEnabled || !ai) return operation; // If in sim mode, operation is already complete
     try {
         return await ai.operations.getVideosOperation({ operation });
     } catch (error) {
