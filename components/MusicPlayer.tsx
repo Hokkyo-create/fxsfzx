@@ -224,15 +224,6 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
             />
             <div id="youtube-player" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
             
-            {/* Click-outside overlay for mobile */}
-            {isExpanded && (
-                <div
-                    className="fixed inset-0 z-40 bg-transparent sm:hidden"
-                    onClick={() => setIsExpanded(false)}
-                    aria-hidden="true"
-                ></div>
-            )}
-            
             <div className="fixed bottom-4 left-4 right-4 sm:left-8 sm:right-auto z-50 flex items-end gap-3">
                  <button
                     ref={toggleButtonRef}
@@ -253,15 +244,20 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                         ${isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}
                     `}
                 >
-                    <div className="flex-shrink-0 p-3 pr-10 relative">
-                        {/* Tabs */}
-                        <div className="flex border-b border-gray-600 mb-3">
-                             <button onClick={() => switchMode('playlist')} className={`px-4 py-2 text-sm font-semibold transition-colors ${mode === 'playlist' ? 'text-brand-red border-b-2 border-brand-red' : 'text-gray-400 hover:text-white'}`}>Rádio ARC7HIVE</button>
-                             <button onClick={() => switchMode('youtube')} className={`px-4 py-2 text-sm font-semibold transition-colors ${mode === 'youtube' ? 'text-brand-red border-b-2 border-brand-red' : 'text-gray-400 hover:text-white'}`}>Buscar no YouTube</button>
+                    {/* New Header */}
+                    <div className="flex-shrink-0 flex items-center justify-between p-2 border-b border-gray-700">
+                        <div className="flex">
+                            <button onClick={() => switchMode('playlist')} className={`px-3 py-1.5 text-sm font-semibold transition-colors ${mode === 'playlist' ? 'text-brand-red border-b-2 border-brand-red' : 'text-gray-400 hover:text-white'}`}>Rádio ARC7HIVE</button>
+                            <button onClick={() => switchMode('youtube')} className={`px-3 py-1.5 text-sm font-semibold transition-colors ${mode === 'youtube' ? 'text-brand-red border-b-2 border-brand-red' : 'text-gray-400 hover:text-white'}`}>Buscar no YouTube</button>
                         </div>
+                        <button onClick={() => setIsExpanded(false)} className="p-2 rounded-full text-gray-400 hover:bg-gray-800 transition-colors">
+                            <Icon name="X" className="w-5 h-5" />
+                        </button>
+                    </div>
 
-                         {/* Player Info */}
-                        <div className="flex items-center gap-4">
+                    {/* Player Info Section */}
+                    <div className="flex-shrink-0 p-3">
+                         <div className="flex items-center gap-4">
                             <div className="flex-shrink-0 w-12 h-12 bg-gray-800 rounded-md flex items-center justify-center text-brand-red overflow-hidden">
                                 {mode === 'youtube' && youtubeTrack ? (
                                     <img src={youtubeTrack.thumbnailUrl} alt={youtubeTrack.title} className="w-full h-full object-cover" />
@@ -287,13 +283,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                                 <button onClick={toNextTrack} disabled={mode !== 'playlist'} className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-30"><Icon name="SkipForward" className="w-5 h-5"/></button>
                             </div>
                         </div>
-                        <button onClick={() => setIsExpanded(false)} className="absolute top-2 right-2 w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center border-2 border-dark hover:bg-brand-red">
-                            <Icon name="X" className="w-3 h-3" />
-                        </button>
                     </div>
                     
                      {mode === 'youtube' && (
-                        <div className="flex flex-col flex-grow min-h-0 border-t border-gray-600 px-3 pb-3">
+                        <div className="flex flex-col flex-grow min-h-0 px-3 pb-3">
                             <form onSubmit={handleSearch} className="relative py-3">
                                 <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar música ou artista..." className="w-full bg-gray-800 border border-gray-700 rounded-full py-2 pl-4 pr-10 text-sm"/>
                                 <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-brand-red"><Icon name="Search" className="w-4 h-4"/></button>
