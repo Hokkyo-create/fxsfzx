@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
 import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Song } from './types';
 import LoginPage from './components/LoginPage';
@@ -13,7 +13,6 @@ import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import ProfileModal from './components/ProfileModal';
 import MusicPlayer from './components/MusicPlayer';
-import Icon from './components/Icons';
 import { getMeetingChatResponse } from './services/geminiService';
 import {
     setupMessagesListener,
@@ -35,11 +34,8 @@ const App: React.FC = () => {
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     
-    // PWA Install & Update state
+    // PWA Install Prompt
     const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
-    const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
-    const newWorkerRef = useRef<ServiceWorker | null>(null);
-
 
     // Meeting state
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
@@ -56,40 +52,8 @@ const App: React.FC = () => {
     // Music Player state
     const [playlist, setPlaylist] = useState<Song[]>([]);
 
-    const handleUpdate = () => {
-        if (newWorkerRef.current) {
-            newWorkerRef.current.postMessage({ type: 'SKIP_WAITING' });
-            // The page will reload once the new worker takes control.
-            // We listen for the 'controllerchange' event to force a reload.
-            let refreshing = false;
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (refreshing) return;
-                window.location.reload();
-                refreshing = true;
-            });
-        }
-    };
 
     useEffect(() => {
-        // PWA update handler
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistration().then(reg => {
-                if (!reg) return;
-                // This fires when the service worker controlling this page changes.
-                reg.addEventListener('updatefound', () => {
-                    newWorkerRef.current = reg.installing;
-                    if (newWorkerRef.current) {
-                         newWorkerRef.current.addEventListener('statechange', () => {
-                             if (newWorkerRef.current?.state === 'installed') {
-                                 // New service worker is installed and waiting.
-                                 setIsUpdateAvailable(true);
-                             }
-                         });
-                    }
-                });
-            });
-        }
-        
         // PWA install prompt handler
         const handleBeforeInstallPrompt = (e: Event) => {
             e.preventDefault();
@@ -112,8 +76,8 @@ const App: React.FC = () => {
             if (storedCategories) setLearningCategories(JSON.parse(storedCategories));
         } catch (error) { console.error("Failed to parse categories", error); }
 
-        // Load user from sessionStorage for enhanced security
-        const storedUserName = sessionStorage.getItem('arc7hive_user');
+        // Load user from localStorage
+        const storedUserName = localStorage.getItem('arc7hive_user');
         if (storedUserName) {
             const foundUser = users.find(u => u.name === storedUserName);
             if (foundUser) {
@@ -185,7 +149,7 @@ const App: React.FC = () => {
         const storedAvatar = localStorage.getItem(`arc7hive_avatar_${user.name}`);
         const userToLogin = { ...user, avatarUrl: storedAvatar || user.avatarUrl };
         setCurrentUser(userToLogin);
-        sessionStorage.setItem('arc7hive_user', user.name); // Use sessionStorage
+        localStorage.setItem('arc7hive_user', user.name);
         setShowWelcome(true);
         const storedProgress = localStorage.getItem(`arc7hive_progress_${user.name}`);
         setWatchedVideos(new Set(storedProgress ? JSON.parse(storedProgress) : []));
@@ -195,7 +159,7 @@ const App: React.FC = () => {
         if (currentUser) {
             goOffline(currentUser.name);
         }
-        sessionStorage.removeItem('arc7hive_user'); // Use sessionStorage
+        localStorage.removeItem('arc7hive_user');
         setCurrentUser(null);
         setSelectedCategory(null);
         setWatchedVideos(new Set());
@@ -388,21 +352,6 @@ const App: React.FC = () => {
                     currentAvatar={currentUser.avatarUrl}
                     onSave={handleUpdateAvatar}
                 />
-            )}
-            {isUpdateAvailable && (
-                <div className="fixed bottom-20 sm:bottom-4 right-4 sm:right-8 bg-dark border-2 border-brand-red rounded-lg shadow-lg p-4 flex items-center gap-4 z-50 animate-slide-in-up">
-                    <Icon name="Upload" className="w-6 h-6 text-brand-red" />
-                    <div>
-                        <p className="font-semibold text-white">Atualização disponível!</p>
-                        <p className="text-sm text-gray-300">Uma nova versão do app está pronta.</p>
-                    </div>
-                    <button 
-                        onClick={handleUpdate}
-                        className="bg-brand-red hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition-colors"
-                    >
-                        Atualizar
-                    </button>
-                </div>
             )}
         </>
     );

@@ -1,23 +1,24 @@
 // sw.js
 
-const CACHE_NAME = 'arc7hive-cache-v3'; // Incremented version for new updates
+const CACHE_NAME = 'arc7hive-cache-v2'; // Bumped version to ensure new SW is installed
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
 ];
 
-// Install: Cache the app shell. The new SW will wait to be activated.
+// Install: Skip waiting and cache the app shell
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache and caching app shell');
+        console.log('Opened cache');
         return cache.addAll(URLS_TO_CACHE);
       })
+      .then(() => self.skipWaiting()) // Force the waiting service worker to become the active service worker.
   );
 });
 
-// Activate: Clean up old caches.
+// Activate: Clean up old caches and take control
 self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
@@ -30,27 +31,14 @@ self.addEventListener('activate', event => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim()) // Take control of all open clients.
   );
 });
-
-// Listen for a message from the client to skip waiting.
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
 
 // Fetch: Stale-While-Revalidate strategy
 self.addEventListener('fetch', event => {
   // Ignore non-GET requests
   if (event.request.method !== 'GET') {
-    return;
-  }
-  
-  // Exclude Firebase from caching to ensure real-time data
-  if (event.request.url.includes('firebaseio.com')) {
     return;
   }
   
