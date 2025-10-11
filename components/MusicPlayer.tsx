@@ -42,6 +42,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
     const progressBarRef = useRef<HTMLDivElement>(null);
     const progressIntervalRef = useRef<number | null>(null);
     const intentToPlayYoutube = useRef(false);
+    const playerContainerRef = useRef<HTMLDivElement>(null);
+    const toggleButtonRef = useRef<HTMLButtonElement>(null);
 
     const currentPlaylistTrack = playlist?.[currentTrackIndex];
     const currentTrack = mode === 'playlist' ? { title: currentPlaylistTrack?.title, artist: currentPlaylistTrack?.artist } : { title: youtubeTrack?.title, artist: youtubeTrack?.artist };
@@ -62,6 +64,32 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
             progressIntervalRef.current = null;
         }
     };
+
+    // Effect to handle "click outside to close" on mobile
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            // Only on mobile, when expanded, and click is outside the player panel and toggle button
+            if (
+                window.innerWidth < 640 &&
+                isExpanded &&
+                playerContainerRef.current &&
+                !playerContainerRef.current.contains(event.target as Node) &&
+                toggleButtonRef.current &&
+                !toggleButtonRef.current.contains(event.target as Node)
+            ) {
+                setIsExpanded(false);
+            }
+        };
+
+        if (isExpanded) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isExpanded]);
+
 
     // Initialize YouTube Player
     useEffect(() => {
@@ -224,6 +252,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
             
             <div className="fixed bottom-4 left-4 right-4 sm:left-8 sm:right-auto z-50 flex items-end gap-3">
                  <button
+                    ref={toggleButtonRef}
                     onClick={togglePlayPause}
                     className="w-14 h-14 bg-dark/80 backdrop-blur-sm border-2 border-brand-red rounded-full flex items-center justify-center shadow-lg transform transition-all hover:scale-110 hover:shadow-brand-red/30 animate-pop-in flex-shrink-0"
                     aria-label={isPlaying ? "Pausar" : "Tocar"}
@@ -233,6 +262,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                 </button>
                 
                  <div 
+                    ref={playerContainerRef}
                     className={`
                         bg-dark/90 backdrop-blur-sm border border-gray-700 rounded-lg shadow-lg flex flex-col
                         w-full sm:w-[350px] max-h-[70vh] sm:max-h-[500px]
