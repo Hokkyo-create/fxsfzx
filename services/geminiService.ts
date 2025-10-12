@@ -111,11 +111,18 @@ const extractJson = (text: string): any[] | null => {
 const YOUTUBE_API_KEY = "AIzaSyD3S9GO5qWWtfr934yAjt4YJ0qN6itMYqs";
 
 async function verifyYouTubeVideo(videoId: string): Promise<boolean> {
+  // A simple check for a valid video ID format can prevent unnecessary fetches.
+  if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+    return false;
+  }
   try {
-    const response = await fetch(`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`, { method: 'HEAD' });
+    // The oEmbed endpoint is a great public way to check for a video's existence and public availability.
+    // It does not require an API key. A 404 means it doesn't exist, and 401/403 means it's private.
+    const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
     return response.ok;
   } catch (error) {
-    console.warn(`Verification check failed for video ID ${videoId}`, error);
+    // This catches network errors etc.
+    console.warn(`Verification check via oEmbed failed for video ID ${videoId}`, error);
     return false;
   }
 }
@@ -124,20 +131,28 @@ async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', cate
     if (isSimulationMode || !ai) {
         return platform === 'tiktok' ? getMockTikTokVideos() : getMockInstagramVideos();
     }
-    
+
     const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
-    const prompt = `Encontre 7 vídeos brasileiros REAIS, PÚBLICOS e relevantes sobre "${categoryTitle}" na plataforma ${platformName}.
-    Foque em conteúdo educativo de alta qualidade, como tutoriais, aulas ou dicas.
-    Para cada vídeo, forneça a URL completa do post e um título claro e conciso.
-    Responda APENAS com um array JSON no seguinte formato: [{ "url": "postUrl", "title": "Video Title" }]. NÃO inclua texto adicional, explicações ou markdown.`;
+    const prompt = `Usando a busca do Google, encontre 7 vídeos populares e recentes em português do Brasil sobre "${categoryTitle}" no ${platformName}.
+Priorize conteúdo educativo como tutoriais, aulas, ou dicas.
+Para cada vídeo, forneça a URL completa e um título descritivo.
+Responda APENAS com um array JSON válido contendo objetos com as chaves "url" e "title".
+Exemplo de formato: [{ "url": "https://www.tiktok.com/@user/video/123", "title": "Tutorial Incrível" }]`;
 
     try {
-        const response: GenerateContentResponse = await ai.models.generateContent({
+        const TIMEOUT_MS = 15000; // 15 seconds
+        const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`A busca por vídeos no ${platformName} demorou demais.`)), TIMEOUT_MS)
+        );
+
+        const apiPromise = ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: { tools: [{ googleSearch: {} }] },
         });
-        
+
+        const response = await Promise.race([apiPromise, timeoutPromise]) as GenerateContentResponse;
+
         const parsedJson = extractJson(response.text);
         if (!parsedJson) return [];
 
@@ -147,8 +162,9 @@ async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', cate
                 const url = new URL(item.url);
                 if (platform === 'tiktok' && url.pathname.includes('/video/')) {
                     videoId = url.pathname.split('/video/')[1].split('/')[0];
-                } else if (platform === 'instagram' && url.pathname.startsWith('/p/')) {
-                    videoId = url.pathname.split('/p/')[1].split('/')[0];
+                } else if (platform === 'instagram' && (url.pathname.startsWith('/p/') || url.pathname.startsWith('/reel/'))) {
+                    const parts = url.pathname.split('/');
+                    if (parts.length > 2) videoId = parts[2];
                 }
             } catch(e) {
                 console.warn(`Could not parse ID from ${platform} URL:`, item.url);
@@ -167,6 +183,9 @@ async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', cate
 
     } catch (error) {
         console.error(`Error finding ${platform} videos for "${categoryTitle}" with Gemini:`, error);
+        if (error instanceof Error && error.message.includes('demorou demais')) {
+             throw error;
+        }
         handleApiError(error);
         throw new Error(`A busca com IA para ${platformName} falhou.`);
     }
@@ -175,8 +194,12 @@ async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', cate
 async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count: number = 7): Promise<Video[]> {
     if (isSimulationMode || !ai) return [];
     console.log(`Iniciando busca com fallback da IA para "${categoryTitle}"...`);
-    const numCandidates = 15;
-    const prompt = `Usando a Busca Google, encontre ${numCandidates} vídeos brasileiros REAIS, PÚBLICOS e relevantes sobre "${categoryTitle}" no YouTube. Foque em conteúdo educativo de alta qualidade, como tutoriais, aulas ou dicas. Para cada vídeo, forneça a URL completa do vídeo (ex: https://www.youtube.com/watch?v=dQw4w9WgXcQ) e um título claro e conciso. É EXTREMAMENTE IMPORTANTE que as URLs sejam de vídeos que existem de verdade. Responda APENAS com um array JSON no seguinte formato: [{ "url": "videoUrl", "title": "Video Title" }]. NÃO inclua texto adicional, explicações ou markdown.`;
+    const numCandidates = 25; // Increase candidate pool for better results
+    const prompt = `Sua tarefa é encontrar vídeos do YouTube sobre "${categoryTitle}". Siga estas regras ESTritamente:
+1. Usando a Busca Google, encontre ${numCandidates} URLs de vídeos brasileiros, públicos e relevantes.
+2. O conteúdo deve ser educativo (tutoriais, aulas, dicas de alta qualidade).
+3. **CRÍTICO**: Verifique se cada URL leva a um vídeo real e que pode ser assistido. Não invente URLs. A precisão é mais importante que a quantidade.
+4. Retorne APENAS um array JSON com objetos no formato [{ "url": "url_completa_do_video", "title": "titulo_do_video" }]. Não inclua nenhum outro texto, markdown, ou explicações fora do JSON.`;
     
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
@@ -247,7 +270,7 @@ export const findVideos = async (categoryTitle: string, platform: 'youtube' | 't
             const response = await fetch(url);
             const data = await response.json();
             if (!response.ok) {
-                console.error("YouTube API Error:", data);
+                console.error("YouTube API Error:", JSON.stringify(data, null, 2));
                 if (data?.error?.message.includes('are blocked')) {
                     console.warn('Direct YouTube API call failed, falling back to Gemini search.');
                     return findYouTubeVideosWithGeminiFallback(categoryTitle);
