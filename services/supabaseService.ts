@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import type { MeetingMessage, OnlineUser, Project, Song, User } from '../types';
+import type { MeetingMessage, OnlineUser, Project, Song, User, Video } from '../types';
 import type { RealtimeChannel, PostgrestError } from '@supabase/supabase-js';
 
 // --- Centralized Error Formatting ---
@@ -92,6 +92,41 @@ export const setupPlaylistListener = (callback: (playlist: Song[], error: Postgr
 
     return () => { supabase.removeChannel(channel); };
 };
+
+// Learning Videos
+export const setupVideosListener = (callback: (videos: Record<string, Video[]>, error: PostgrestError | null) => void) => {
+    const handleVideoUpdates = async () => {
+        const { data, error } = await supabase.from('learning_videos').select('*');
+        if (error) {
+            callback({}, error);
+        } else {
+            const videosByCategory = (data as any[]).reduce((acc, video) => {
+                const mappedVideo: Video = {
+                    id: video.id,
+                    title: video.title,
+                    duration: video.duration,
+                    thumbnailUrl: video.thumbnail_url,
+                    platform: video.platform,
+                };
+                if (!acc[video.category_id]) {
+                    acc[video.category_id] = [];
+                }
+                acc[video.category_id].push(mappedVideo);
+                return acc;
+            }, {} as Record<string, Video[]>);
+            callback(videosByCategory, null);
+        }
+    };
+    
+    handleVideoUpdates();
+
+    const channel = supabase.channel('public:learning_videos')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_videos' }, handleVideoUpdates)
+        .subscribe();
+        
+    return () => { supabase.removeChannel(channel); };
+};
+
 
 // --- Presence (Online & Typing Status) ---
 let presenceChannel: RealtimeChannel;
@@ -197,6 +232,24 @@ export const updateUserPresence = async (user: User) => {
 export const goOffline = (userName: string) => {
     if(presenceChannel) {
         presenceChannel.untrack();
+    }
+};
+
+// Learning Videos Actions
+export const addVideos = async (categoryId: string, platform: string, videos: Video[]) => {
+    const videosToInsert = videos.map(video => ({
+        id: video.id,
+        category_id: categoryId,
+        platform: platform,
+        title: video.title,
+        duration: video.duration,
+        thumbnail_url: video.thumbnailUrl,
+    }));
+
+    const { error } = await supabase.from('learning_videos').upsert(videosToInsert);
+    if (error) {
+        console.error("Error adding videos to Supabase:", error);
+        throw error;
     }
 };
 

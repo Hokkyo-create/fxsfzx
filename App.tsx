@@ -23,7 +23,9 @@ import {
     updateUserPresence,
     goOffline,
     setupPlaylistListener,
-    formatSupabaseError
+    formatSupabaseError,
+    setupVideosListener,
+    addVideos
 } from './services/supabaseService';
 import Icon from './components/Icons';
 
@@ -99,12 +101,6 @@ const App: React.FC = () => {
             document.head.appendChild(styleElement);
         }
 
-        // Load categories from localStorage
-        try {
-            const storedCategories = localStorage.getItem('arc7hive_categories');
-            if (storedCategories) setLearningCategories(JSON.parse(storedCategories));
-        } catch (error) { console.error("Failed to parse categories", error); }
-
         // Load user from localStorage
         const storedUserName = localStorage.getItem('arc7hive_user');
         if (storedUserName) {
@@ -170,94 +166,73 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, []);
     
+    // Effect to persist watched videos progress
     useEffect(() => {
         if (currentUser) {
             localStorage.setItem(`arc7hive_progress_${currentUser.name}`, JSON.stringify(Array.from(watchedVideos)));
         }
     }, [watchedVideos, currentUser]);
-
+    
+    // Effect for Supabase Learning Videos Sync
     useEffect(() => {
-        try {
-            localStorage.setItem('arc7hive_categories', JSON.stringify(learningCategories));
-        } catch (error) { console.error("Failed to save categories", error); }
-    }, [learningCategories]);
-
-    const handleAddVideosToCategory = useCallback((categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => {
-        setLearningCategories(prevCategories => {
-            const updatedCategories = prevCategories.map(cat => {
-                if (cat.id === categoryId) {
-                    let updatedCat = { ...cat };
-                    if (platform === 'youtube') {
-                        const existingVideoIds = new Set(cat.videos.map(v => v.id));
-                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                        updatedCat.videos = [...cat.videos, ...uniqueNewVideos];
-                    } else if (platform === 'tiktok') {
-                        const existingVideoIds = new Set((cat.tiktokVideos || []).map(v => v.id));
-                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                        updatedCat.tiktokVideos = [...(cat.tiktokVideos || []), ...uniqueNewVideos];
-                    } else if (platform === 'instagram') {
-                        const existingVideoIds = new Set((cat.instagramVideos || []).map(v => v.id));
-                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                        updatedCat.instagramVideos = [...(cat.instagramVideos || []), ...uniqueNewVideos];
-                    }
-                    return updatedCat;
-                }
-                return cat;
-            });
-
-            if (selectedCategory?.id === categoryId) {
-                const updatedCategory = updatedCategories.find(c => c.id === categoryId);
-                if (updatedCategory) setSelectedCategory(updatedCategory);
+        if (!currentUser) return;
+        
+        const unsubscribe = setupVideosListener((videosByCategory, error) => {
+            if (error) {
+                 setNotification({type: 'error', message: formatSupabaseError(error, 'trilhas de conhecimento') || 'Erro desconhecido.'});
+            } else {
+                setLearningCategories(currentCategories => 
+                    currentCategories.map(cat => ({
+                        ...cat,
+                        videos: videosByCategory[cat.id]?.filter(v => v.platform === 'youtube') || [],
+                        tiktokVideos: videosByCategory[cat.id]?.filter(v => v.platform === 'tiktok') || [],
+                        instagramVideos: videosByCategory[cat.id]?.filter(v => v.platform === 'instagram') || [],
+                    }))
+                );
             }
-            return updatedCategories;
         });
-    }, [selectedCategory]);
 
-    // Effect to auto-populate empty categories with videos on login
+        return () => unsubscribe();
+    }, [currentUser]);
+
+    // Effect to auto-populate empty categories with videos
     useEffect(() => {
         if (!currentUser) return;
     
         const populateEmptyCategories = async () => {
-            // Check session storage to run this only once per session
-            const populated = sessionStorage.getItem('arc7hive_populated_categories');
-            if (populated) return;
-    
-            // Use a functional update to get the latest categories without adding it to dependency array
-            setLearningCategories(currentCategories => {
-                const categoriesToUpdate = currentCategories.filter(cat => cat.videos.length === 0);
-                if (categoriesToUpdate.length === 0) {
-                    sessionStorage.setItem('arc7hive_populated_categories', 'true');
-                    return currentCategories; // No change needed
-                }
-                
-                setLoadingCategories(new Set(categoriesToUpdate.map(c => c.id)));
-                
-                const searchPromises = categoriesToUpdate.map(category =>
-                    findVideos(category.title, 'youtube')
-                        .then(newVideos => ({ categoryId: category.id, newVideos, success: true }))
-                        .catch(error => {
-                            console.error(`Falha ao buscar vídeos para ${category.title}:`, error);
-                            return { categoryId: category.id, newVideos: [], success: false };
-                        })
-                );
-    
-                Promise.all(searchPromises).then(results => {
-                    results.forEach(result => {
-                        if (result.success && result.newVideos.length > 0) {
-                            handleAddVideosToCategory(result.categoryId, result.newVideos, 'youtube');
+            const categoriesToUpdate = learningCategories.filter(cat => cat.videos.length === 0 && !loadingCategories.has(cat.id));
+            if (categoriesToUpdate.length === 0) return;
+            
+            setLoadingCategories(prev => new Set([...prev, ...categoriesToUpdate.map(c => c.id)]));
+            
+            const searchPromises = categoriesToUpdate.map(category =>
+                findVideos(category.title, 'youtube')
+                    .then(async newVideos => {
+                        if (newVideos.length > 0) {
+                            await addVideos(category.id, 'youtube', newVideos);
                         }
-                    });
-                    setLoadingCategories(new Set());
-                    sessionStorage.setItem('arc7hive_populated_categories', 'true');
-                });
-    
-                return currentCategories; // Return original while async operation is running
-            });
+                        return { categoryId: category.id, success: true };
+                    })
+                    .catch(error => {
+                        console.error(`Falha ao buscar vídeos para ${category.title}:`, error);
+                        setNotification({ type: 'error', message: `IA falhou para: ${category.title}` });
+                        return { categoryId: category.id, success: false };
+                    })
+            );
+
+            try {
+                await Promise.all(searchPromises);
+            } finally {
+                 // The real-time listener will update the state, but we must clear the loading indicator.
+                setLoadingCategories(new Set());
+            }
         };
     
-        populateEmptyCategories();
-    }, [currentUser, handleAddVideosToCategory]);
+        // Debounce or delay to prevent running on rapid state changes
+        const timer = setTimeout(populateEmptyCategories, 1000);
+        return () => clearTimeout(timer);
 
+    }, [currentUser, learningCategories, loadingCategories]);
 
     const handleLogin = (user: User) => {
         const storedAvatar = localStorage.getItem(`arc7hive_avatar_${user.name}`);
@@ -274,7 +249,6 @@ const App: React.FC = () => {
             goOffline(currentUser.name);
         }
         localStorage.removeItem('arc7hive_user');
-        sessionStorage.removeItem('arc7hive_populated_categories');
         setCurrentUser(null);
         setSelectedCategory(null);
         setWatchedVideos(new Set());
@@ -283,6 +257,8 @@ const App: React.FC = () => {
         setIsProjectsOpen(false);
         setSelectedProject(null);
         setGeneratingProjectConfig(null);
+        // Reset categories to initial state to clear video data
+        setLearningCategories(initialCategories);
     };
     
     const handleToggleAdminPanel = () => setIsAdminPanelOpen(prev => !prev);
@@ -353,6 +329,11 @@ const App: React.FC = () => {
         });
     };
     
+    const handleAddVideosToCategory = useCallback(async (categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => {
+        await addVideos(categoryId, platform, newVideos);
+        // The real-time listener will handle the UI update.
+    }, []);
+
     const totalVideos = useMemo(() => learningCategories.reduce((acc, cat) => acc + cat.videos.length, 0), [learningCategories]);
     const completedVideos = watchedVideos.size;
     const overallProgress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
