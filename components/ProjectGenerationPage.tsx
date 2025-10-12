@@ -150,6 +150,9 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
                 avatarUrl: user.avatarUrl,
             };
             await createProject(projectToSave);
+            window.dispatchEvent(new CustomEvent('app-notification', { 
+                detail: { type: 'info', message: 'Projeto salvo com sucesso na sua biblioteca!' }
+            }));
             onFinish();
         } catch(e) {
             setError("Falha ao salvar o projeto no banco de dados. Tente novamente.");

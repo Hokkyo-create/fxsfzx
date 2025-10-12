@@ -64,9 +64,14 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
                 chapters: editableProject.chapters,
             });
             setHasChanges(false);
+            window.dispatchEvent(new CustomEvent('app-notification', { 
+                detail: { type: 'info', message: 'Alterações salvas com sucesso!' }
+            }));
         } catch (error) {
             console.error("Failed to save changes:", error);
-            alert("Falha ao salvar as alterações.");
+            window.dispatchEvent(new CustomEvent('app-notification', { 
+                detail: { type: 'error', message: 'Falha ao salvar as alterações.' }
+            }));
         } finally {
             setIsSaving(false);
         }

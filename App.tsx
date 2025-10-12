@@ -13,6 +13,7 @@ import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import ProfileModal from './components/ProfileModal';
 import MusicPlayer from './components/MusicPlayer';
+import NotificationBanner from './components/NotificationBanner';
 import { getMeetingChatResponse } from './services/geminiService';
 import {
     setupMessagesListener,
@@ -42,6 +43,7 @@ const App: React.FC = () => {
     
     // PWA Install Prompt
     const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+    const [notification, setNotification] = useState<Notification | null>(null);
 
     // Meeting state
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
@@ -103,6 +105,24 @@ const App: React.FC = () => {
         };
     }, []);
 
+    // Effect for handling global notifications
+    useEffect(() => {
+        const handleNotification = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail && detail.message && detail.type) {
+                setNotification({ type: detail.type, message: detail.message });
+                const timer = setTimeout(() => {
+                    setNotification(current => (current?.message === detail.message ? null : current));
+                }, 5000);
+            }
+        };
+
+        window.addEventListener('app-notification', handleNotification);
+        return () => {
+            window.removeEventListener('app-notification', handleNotification);
+        };
+    }, []);
+
     // Effect for Real-time Supabase Chat Sync
     useEffect(() => {
         if (!currentUser) return;
@@ -157,7 +177,9 @@ const App: React.FC = () => {
         const handler = setTimeout(() => {
             updateUserProgress(currentUser.name, watchedVideos).catch(err => {
                 console.error("Failed to sync progress:", err);
-                // Here you might want a small, non-intrusive indicator of sync failure
+                window.dispatchEvent(new CustomEvent('app-notification', { 
+                    detail: { type: 'error', message: 'Falha ao salvar seu progresso. Verifique a conexão.' }
+                }));
             });
         }, 1500);
 
@@ -279,8 +301,16 @@ const App: React.FC = () => {
         const updatedUser = { ...currentUser, avatarUrl: newAvatarUrl };
         setCurrentUser(updatedUser);
         localStorage.setItem(`arc7hive_avatar_${currentUser.name}`, newAvatarUrl);
-        // Update presence in Supabase with new avatar
-        await updateUserPresence(updatedUser);
+        try {
+            await updateUserPresence(updatedUser);
+            window.dispatchEvent(new CustomEvent('app-notification', { 
+                detail: { type: 'info', message: 'Avatar atualizado com sucesso!' }
+            }));
+        } catch (error) {
+             window.dispatchEvent(new CustomEvent('app-notification', { 
+                detail: { type: 'error', message: 'Falha ao atualizar o avatar.' }
+            }));
+        }
     };
     
     const handleToggleVideoWatched = (videoId: string) => {
@@ -442,6 +472,13 @@ const App: React.FC = () => {
     return (
         <>
             {renderContent()}
+            {notification && (
+                <NotificationBanner
+                    message={notification.message}
+                    type={notification.type}
+                    onClose={() => setNotification(null)}
+                />
+            )}
             {showChatbot && <Chatbot />}
             {showMusicPlayer && <MusicPlayer playlist={playlist} error={playlistError} />}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
