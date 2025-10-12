@@ -21,7 +21,7 @@ export interface Video {
   title: string;
   duration: string; // e.g. "10:32"
   thumbnailUrl: string;
-  platform?: 'youtube' | 'tiktok' | 'instagram';
+  platform: 'youtube' | 'tiktok' | 'instagram';
 }
 
 export interface LearningCategory {

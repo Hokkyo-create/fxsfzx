@@ -52,10 +52,13 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
         setSearchError('');
         try {
             const newVideos = await findVideos(category.title, activePlatform);
-            if (newVideos && newVideos.length > 0) {
+            if (newVideos && newVideos.length >= 5) {
                 onAddVideos(category.id, newVideos, activePlatform);
+            } else if (newVideos && newVideos.length > 0) {
+                 onAddVideos(category.id, newVideos, activePlatform);
+                 setSearchError(`A busca com IA encontrou apenas ${newVideos.length} vídeos. Tente novamente mais tarde.`);
             } else {
-                setSearchError(`Nenhum vídeo novo encontrado para ${activePlatform}.`);
+                setSearchError(`Nenhum vídeo novo encontrado para ${activePlatform}. A IA não conseguiu encontrar conteúdo relevante.`);
             }
         } catch (error) {
             console.error(`Failed to find more videos for ${activePlatform}:`, error);

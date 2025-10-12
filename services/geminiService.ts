@@ -91,41 +91,38 @@ export const getChatbotResponse = async (prompt: string, history: ChatMessage[])
     }
 };
 
-const extractJson = (text: string): any[] | null => {
-    const startIndex = text.indexOf('[');
-    const endIndex = text.lastIndexOf(']');
-    if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
-        console.warn("Could not find a JSON array in the AI response.", text);
-        return null;
-    }
-    const jsonString = text.substring(startIndex, endIndex + 1);
-    try {
-        return JSON.parse(jsonString);
-    } catch (e) {
-        console.error("Failed to parse JSON from AI response:", e);
-        console.error("Original text:", text);
-        return null;
-    }
-};
-
 const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
 
 async function verifyYouTubeVideo(videoId: string): Promise<boolean> {
-  // A simple check for a valid video ID format can prevent unnecessary fetches.
   if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
     return false;
   }
   try {
-    // The oEmbed endpoint is a great public way to check for a video's existence and public availability.
-    // It does not require an API key. A 404 means it doesn't exist, and 401/403 means it's private.
     const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
     return response.ok;
   } catch (error) {
-    // This catches network errors etc.
     console.warn(`Verification check via oEmbed failed for video ID ${videoId}`, error);
     return false;
   }
 }
+
+const socialSearchSchema = {
+    type: Type.OBJECT,
+    properties: {
+        videos: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    url: { type: Type.STRING, description: "The full, valid URL to the video on the social platform." },
+                    title: { type: Type.STRING, description: "A descriptive title for the video." },
+                },
+                required: ["url", "title"],
+            },
+        },
+    },
+    required: ["videos"],
+};
 
 async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', categoryTitle: string): Promise<Video[]> {
     if (isSimulationMode || !ai) {
@@ -136,11 +133,10 @@ async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', cate
     const prompt = `Usando a busca do Google, encontre 7 vídeos populares e recentes em português do Brasil sobre "${categoryTitle}" no ${platformName}.
 Priorize conteúdo educativo como tutoriais, aulas, ou dicas.
 Para cada vídeo, forneça a URL completa e um título descritivo.
-Responda APENAS com um array JSON válido contendo objetos com as chaves "url" e "title".
-Exemplo de formato: [{ "url": "https://www.tiktok.com/@user/video/123", "title": "Tutorial Incrível" }]`;
+Responda APENAS com o JSON no formato definido.`;
 
     try {
-        const TIMEOUT_MS = 15000; // 15 seconds
+        const TIMEOUT_MS = 20000; // 20 seconds
         const timeoutPromise = new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error(`A busca por vídeos no ${platformName} demorou demais.`)), TIMEOUT_MS)
         );
@@ -148,15 +144,21 @@ Exemplo de formato: [{ "url": "https://www.tiktok.com/@user/video/123", "title":
         const apiPromise = ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: { tools: [{ googleSearch: {} }] },
+            config: { 
+                tools: [{ googleSearch: {} }],
+                responseMimeType: "application/json",
+                responseSchema: socialSearchSchema,
+            },
         });
 
         const response = await Promise.race([apiPromise, timeoutPromise]) as GenerateContentResponse;
 
-        const parsedJson = extractJson(response.text);
-        if (!parsedJson) return [];
+        const parsedJson = JSON.parse(response.text);
+        const candidates: { url: string; title: string }[] = parsedJson.videos || [];
+        if (!candidates) return [];
 
-        return parsedJson.map((item: { url: string; title: string }) => {
+        // FIX: Add explicit return type `Video | null` to the map callback to ensure type compatibility with the `v is Video` type predicate in the subsequent filter.
+        return candidates.map((item): Video | null => {
             let videoId: string | null = null;
             try {
                 const url = new URL(item.url);
@@ -178,6 +180,7 @@ Exemplo de formato: [{ "url": "https://www.tiktok.com/@user/video/123", "title":
                 title: item.title,
                 duration: '??:??',
                 thumbnailUrl,
+                platform: platform,
             };
         }).filter((v): v is Video => v !== null);
 
@@ -191,52 +194,67 @@ Exemplo de formato: [{ "url": "https://www.tiktok.com/@user/video/123", "title":
     }
 }
 
+const youtubeSearchSchema = {
+    type: Type.OBJECT,
+    properties: {
+        videos: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    videoId: { type: Type.STRING, description: "The 11-character unique ID of the YouTube video." },
+                    title: { type: Type.STRING, description: "The title of the YouTube video." },
+                },
+                required: ["videoId", "title"],
+            },
+        },
+    },
+    required: ["videos"],
+};
+
+
 async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count: number = 7): Promise<Video[]> {
     if (isSimulationMode || !ai) return [];
     console.log(`Iniciando busca com fallback da IA para "${categoryTitle}"...`);
-    const numCandidates = 25; // Increase candidate pool for better results
-    const prompt = `Sua tarefa é encontrar vídeos do YouTube sobre "${categoryTitle}". Siga estas regras ESTritamente:
-1. Usando a Busca Google, encontre ${numCandidates} URLs de vídeos brasileiros, públicos e relevantes.
-2. O conteúdo deve ser educativo (tutoriais, aulas, dicas de alta qualidade).
-3. **CRÍTICO**: Verifique se cada URL leva a um vídeo real e que pode ser assistido. Não invente URLs. A precisão é mais importante que a quantidade.
-4. Retorne APENAS um array JSON com objetos no formato [{ "url": "url_completa_do_video", "title": "titulo_do_video" }]. Não inclua nenhum outro texto, markdown, ou explicações fora do JSON.`;
+    
+    const prompt = `Sua tarefa é encontrar exatamente ${count} vídeos do YouTube sobre "${categoryTitle}". Siga estas regras CRÍTICAS:
+1.  Use a ferramenta de Busca Google para encontrar vídeos REAIS, PÚBLICOS e em PORTUGUÊS DO BRASIL.
+2.  O conteúdo DEVE ser educativo: tutoriais, aulas, dicas de alta qualidade.
+3.  **VERIFIQUE CADA VÍDEO**: Certifique-se de que os vídeos existem e não são privados antes de responder. A precisão é fundamental.
+4.  Extraia o ID de 11 caracteres de cada vídeo (ex: 'dQw4w9WgXcQ').
+5.  Responda APENAS com o JSON no formato definido. Não inclua texto adicional.`;
     
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: { tools: [{ googleSearch: {} }] },
+            config: { 
+                tools: [{ googleSearch: {} }],
+                responseMimeType: "application/json",
+                responseSchema: youtubeSearchSchema,
+            },
         });
         
-        const candidates = extractJson(response.text);
+        const parsedJson = JSON.parse(response.text);
+        const candidates: { videoId: string; title: string }[] = parsedJson.videos || [];
+
         if (!candidates || candidates.length === 0) {
-            console.warn("IA não retornou candidatos ou o JSON é inválido na tentativa de fallback.");
+            console.warn("IA não retornou candidatos válidos no fallback.");
             return [];
         }
 
-        const verificationPromises = candidates.map(async (candidate: any) => {
-            const videoUrl = candidate?.url;
-            if (videoUrl && typeof videoUrl === 'string') {
-                let videoId: string | null = null;
-                try {
-                    const urlObj = new URL(videoUrl);
-                    if (urlObj.hostname.includes('youtube.com')) {
-                        videoId = urlObj.searchParams.get('v');
-                    } else if (urlObj.hostname === 'youtu.be') {
-                        videoId = urlObj.pathname.substring(1);
-                    }
-                } catch (e) { return null; }
-
-                if (videoId) {
-                     const isValid = await verifyYouTubeVideo(videoId);
-                     if (isValid) {
-                         return {
-                             id: videoId,
-                             title: candidate.title || "Título indisponível",
-                             duration: '??:??',
-                             thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
-                         };
-                     }
+        // FIX: Add explicit return type `Promise<Video | null>` to the async map callback to ensure type compatibility with the `v is Video` type predicate in the subsequent filter.
+        const verificationPromises = candidates.map(async (candidate): Promise<Video | null> => {
+            if (candidate.videoId && candidate.title) {
+                const isValid = await verifyYouTubeVideo(candidate.videoId);
+                if (isValid) {
+                    return {
+                        id: candidate.videoId,
+                        title: candidate.title,
+                        duration: '??:??',
+                        thumbnailUrl: `https://i.ytimg.com/vi/${candidate.videoId}/mqdefault.jpg`,
+                        platform: 'youtube',
+                    };
                 }
             }
             return null;
@@ -244,6 +262,7 @@ async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count:
 
         const verifiedResults = await Promise.all(verificationPromises);
         const validVideos = verifiedResults.filter((v): v is Video => v !== null);
+        
         console.log(`Busca de fallback concluída. Encontrados ${validVideos.length} vídeos válidos de ${candidates.length} candidatos.`);
         return validVideos.slice(0, count);
 
@@ -288,6 +307,7 @@ export const findVideos = async (categoryTitle: string, platform: 'youtube' | 't
                 title: item.snippet.title,
                 duration: '??:??',
                 thumbnailUrl: item.snippet.thumbnails.medium.url,
+                platform: 'youtube' as const,
             }));
         } catch (error) {
             console.error(`Error finding YouTube videos for "${categoryTitle}":`, error);
