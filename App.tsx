@@ -294,8 +294,25 @@ const App: React.FC = () => {
     
     const handleAddVideosToCategory = useCallback(async (categoryId: string, newVideos: Video[]) => {
         try {
+            // Perform the database update
             await addVideos(categoryId, 'youtube', newVideos);
-            // The real-time listener will handle the UI update.
+            
+            // Optimistically update the local state to reflect the change immediately.
+            // The real-time listener will eventually sync with the database, ensuring consistency.
+            setLearningCategories(currentCategories => 
+                currentCategories.map(cat => {
+                    if (cat.id === categoryId) {
+                        // Create a set of existing video IDs for quick lookup to prevent duplicates
+                        const existingVideoIds = new Set(cat.videos.map(v => v.id));
+                        // Filter out any new videos that might already be in the state
+                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                        
+                        // Return the category with the combined list of old and new videos
+                        return { ...cat, videos: [...cat.videos, ...uniqueNewVideos] };
+                    }
+                    return cat;
+                })
+            );
         } catch (error) {
             console.error(error); // The component calling this should handle the user-facing error.
             // Re-throw the error so the calling component knows the operation failed.

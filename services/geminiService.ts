@@ -52,22 +52,32 @@ const parseYoutubeDuration = (isoDuration: string): string => {
     return `${displayMinutes}:${displaySeconds.toString().padStart(2, '0')}`;
 };
 
+const categorySearchQueries: Record<string, string> = {
+    'Inteligência Artificial': '"Inteligência Artificial" curso completo | "machine learning" para iniciantes | "redes neurais" tutorial | "deep learning" explicado | "chatgpt" para negócios | "midjourney" tutorial',
+    'Marketing Digital': '"marketing digital" para afiliados | "tráfego pago" curso | "gestor de tráfego" | "google ads" passo a passo | "facebook ads" para iniciantes | "seo para iniciantes" | "copywriting" curso',
+    'Mercado Financeiro': '"day trade" para iniciantes | "análise técnica" curso | "investir em ações" | "como investir em criptomoedas" | "educação financeira" | "swing trade" | "price action"',
+    'Vendas e Produtos Digitais': '"como vender infoprodutos" | "lançamento de produto digital" | "hotmart" como vender | "dropshipping" passo a passo | "PLR" o que é | "kiwify" tutorial | "estratégia de vendas online"',
+    'Ferramentas e Automação': '"automação n8n" tutorial | "make.com" automação | "zapier" para iniciantes | "automação de marketing" ferramentas | "lovable" automação',
+    'Academia e Fitness': '"treino de hipertrofia" | "como ganhar massa muscular" | "dieta para emagrecer" | "treino ABC" | "calistenia" para iniciantes | "jejum intermitente" | "melhores suplementos"',
+    'Psicologia e Desenvolvimento': '"48 leis do poder" resumo | "estoicismo" na prática | "sun tzu a arte da guerra" explicado | "inteligência emocional" daniel goleman | "o poder do hábito" | "leis da natureza humana" | "comunicação assertiva"',
+};
+
 export const findMoreVideos = async (categoryTitle: string, existingVideos: Video[]): Promise<Video[]> => {
     const existingVideoIds = existingVideos.map(v => v.id);
-    const topic = categoryTitle;
-
+    
     if (!YOUTUBE_API_KEY) {
         throw new Error("A chave da API do YouTube não foi configurada. O administrador precisa adicionar a YOUTUBE_API_KEY nas variáveis de ambiente.");
     }
 
-    // Step 1: Generate a single, powerful search query.
-    let searchQuery: string;
-    
-    if (topic === 'Psicologia e Desenvolvimento') {
-        searchQuery = '"48 leis do poder" | "mentalidade vencedora" | "estoicismo" | "sun tzu a arte da guerra"';
-    } else {
-        searchQuery = `"${topic}" tutorial | "${topic}" curso`;
-    }
+    // Step 1: Generate a powerful search query.
+    // Start with the specific query from our map.
+    const specificQuery = categorySearchQueries[categoryTitle];
+
+    // Step 2: Always include a generic fallback to broaden the search.
+    const genericQuery = `"${categoryTitle}" tutorial | "${categoryTitle}" curso`;
+
+    // Combine them for a more robust search. If a specific query exists, it's prioritized.
+    const searchQuery = specificQuery ? `${specificQuery} | ${genericQuery}` : genericQuery;
     
     console.log(`Searching YouTube with query: ${searchQuery}`);
 
