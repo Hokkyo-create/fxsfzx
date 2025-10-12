@@ -18,7 +18,6 @@ interface DashboardPageProps {
     onNavigateToProjects: () => void;
     onOpenProfileModal: () => void;
     installPrompt: Event | null;
-    loadingCategories: Set<string>;
 }
 
 const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -35,7 +34,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     onNavigateToProjects,
     onOpenProfileModal,
     installPrompt,
-    loadingCategories,
 }) => {
     const [showIosInstallMessage, setShowIosInstallMessage] = useState(false);
 
@@ -170,7 +168,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                                     category={category} 
                                     progress={categoryProgress}
                                     onClick={() => onSelectCategory(category)} 
-                                    isLoading={loadingCategories.has(category.id)}
                                 />
                             );
                         })}

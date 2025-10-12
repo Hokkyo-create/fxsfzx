@@ -14,7 +14,7 @@ import AdminPanel from './components/AdminPanel';
 import ProfileModal from './components/ProfileModal';
 import MusicPlayer from './components/MusicPlayer';
 import NotificationBanner from './components/NotificationBanner';
-import { getMeetingChatResponse, enableSimulationMode as enableGeminiSimulationMode, findVideos } from './services/geminiService';
+import { getMeetingChatResponse, enableSimulationMode as enableGeminiSimulationMode } from './services/geminiService';
 import {
     setupMessagesListener,
     setupPresence,
@@ -42,8 +42,6 @@ const App: React.FC = () => {
     // PWA Install Prompt
     const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
     const [isSimulationMode, setIsSimulationMode] = useState(false);
-    const [loadingCategories, setLoadingCategories] = useState<Set<string>>(new Set());
-
 
     // Meeting state
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
@@ -194,45 +192,6 @@ const App: React.FC = () => {
 
         return () => unsubscribe();
     }, [currentUser]);
-
-    // Effect to auto-populate empty categories with videos
-    useEffect(() => {
-        if (!currentUser) return;
-    
-        const populateEmptyCategories = async () => {
-            const categoriesToUpdate = learningCategories.filter(cat => cat.videos.length === 0 && !loadingCategories.has(cat.id));
-            if (categoriesToUpdate.length === 0) return;
-            
-            setLoadingCategories(prev => new Set([...prev, ...categoriesToUpdate.map(c => c.id)]));
-            
-            const searchPromises = categoriesToUpdate.map(category =>
-                findVideos(category.title, 'youtube')
-                    .then(async newVideos => {
-                        if (newVideos.length > 0) {
-                            await addVideos(category.id, 'youtube', newVideos);
-                        }
-                        return { categoryId: category.id, success: true };
-                    })
-                    .catch(error => {
-                        console.error(`Falha ao buscar vídeos para ${category.title}:`, error);
-                        setNotification({ type: 'error', message: `IA falhou para: ${category.title}` });
-                        return { categoryId: category.id, success: false };
-                    })
-            );
-
-            try {
-                await Promise.all(searchPromises);
-            } finally {
-                 // The real-time listener will update the state, but we must clear the loading indicator.
-                setLoadingCategories(new Set());
-            }
-        };
-    
-        // Debounce or delay to prevent running on rapid state changes
-        const timer = setTimeout(populateEmptyCategories, 1000);
-        return () => clearTimeout(timer);
-
-    }, [currentUser, learningCategories, loadingCategories]);
 
     const handleLogin = (user: User) => {
         const storedAvatar = localStorage.getItem(`arc7hive_avatar_${user.name}`);
@@ -420,7 +379,6 @@ const App: React.FC = () => {
                 onNavigateToProjects={handleNavigateToProjects}
                 onOpenProfileModal={() => setIsProfileModalOpen(true)}
                 installPrompt={installPrompt}
-                loadingCategories={loadingCategories}
             />
         );
     };

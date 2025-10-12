@@ -6,7 +6,6 @@ interface CategoryCardProps {
     category: LearningCategory;
     progress: number;
     onClick: () => void;
-    isLoading: boolean;
 }
 
 const colorMap = {
@@ -22,23 +21,10 @@ const colorMap = {
 
 type ColorKey = keyof typeof colorMap;
 
-const CategoryCard: React.FC<CategoryCardProps> = ({ category, progress, onClick, isLoading }) => {
+const CategoryCard: React.FC<CategoryCardProps> = ({ category, progress, onClick }) => {
     const { title, description, icon, videos, color } = category;
     const colorClasses = colorMap[color as ColorKey] || colorMap.red;
     const completedCount = Math.round((progress / 100) * videos.length);
-
-    if (isLoading) {
-        return (
-            <div className={`category-card bg-dark/50 backdrop-blur-lg border ${colorClasses.border} rounded-lg p-6 flex flex-col justify-center items-center text-center transition-all duration-300 relative overflow-hidden h-[288px]`}>
-                <svg className="animate-spin h-8 w-8 text-gray-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <h3 className="text-lg font-display tracking-wider text-white">Buscando conteúdo...</h3>
-                <p className="text-gray-500 text-sm mt-1">{title}</p>
-            </div>
-        );
-    }
     
     return (
         <div 
