@@ -54,6 +54,25 @@ export const enableSimulationMode = () => {
     isSimulationMode = true;
 };
 
+// --- Helper Functions ---
+
+const cleanAndParseJson = (rawText: string): any => {
+    let jsonText = rawText.trim();
+    if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.substring(7).trim();
+    }
+    if (jsonText.endsWith('```')) {
+        jsonText = jsonText.slice(0, -3).trim();
+    }
+    try {
+        return JSON.parse(jsonText);
+    } catch (e) {
+        console.error("Failed to parse JSON from Gemini response:", jsonText);
+        throw new Error("A resposta da IA não estava no formato JSON esperado.");
+    }
+};
+
+
 // --- API Functions ---
 
 export const getMeetingChatResponse = async (prompt: string, history: MeetingMessage[]): Promise<string> => {
@@ -91,7 +110,7 @@ export const getChatbotResponse = async (prompt: string, history: ChatMessage[])
     }
 };
 
-const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
+const YOUTUBE_API_KEY = 'AIzaSyCdG02380LWWNLoj26TlypyF38wvjd-W8Y';
 
 async function verifyYouTubeVideo(videoId: string): Promise<boolean> {
   if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
@@ -106,24 +125,6 @@ async function verifyYouTubeVideo(videoId: string): Promise<boolean> {
   }
 }
 
-const socialSearchSchema = {
-    type: Type.OBJECT,
-    properties: {
-        videos: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    url: { type: Type.STRING, description: "The full, valid URL to the video on the social platform." },
-                    title: { type: Type.STRING, description: "A descriptive title for the video." },
-                },
-                required: ["url", "title"],
-            },
-        },
-    },
-    required: ["videos"],
-};
-
 async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', categoryTitle: string): Promise<Video[]> {
     if (isSimulationMode || !ai) {
         return platform === 'tiktok' ? getMockTikTokVideos() : getMockInstagramVideos();
@@ -133,7 +134,7 @@ async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', cate
     const prompt = `Usando a busca do Google, encontre 7 vídeos populares e recentes em português do Brasil sobre "${categoryTitle}" no ${platformName}.
 Priorize conteúdo educativo como tutoriais, aulas, ou dicas.
 Para cada vídeo, forneça a URL completa e um título descritivo.
-Responda APENAS com o JSON no formato definido.`;
+Responda APENAS com um objeto JSON contendo uma chave "videos", que é um array de objetos com chaves "url" e "title".`;
 
     try {
         const TIMEOUT_MS = 20000; // 20 seconds
@@ -146,14 +147,12 @@ Responda APENAS com o JSON no formato definido.`;
             contents: prompt,
             config: { 
                 tools: [{ googleSearch: {} }],
-                responseMimeType: "application/json",
-                responseSchema: socialSearchSchema,
             },
         });
 
         const response = await Promise.race([apiPromise, timeoutPromise]) as GenerateContentResponse;
 
-        const parsedJson = JSON.parse(response.text);
+        const parsedJson = cleanAndParseJson(response.text);
         const candidates: { url: string; title: string }[] = parsedJson.videos || [];
         if (!candidates) return [];
 
@@ -194,25 +193,6 @@ Responda APENAS com o JSON no formato definido.`;
     }
 }
 
-const youtubeSearchSchema = {
-    type: Type.OBJECT,
-    properties: {
-        videos: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    videoId: { type: Type.STRING, description: "The 11-character unique ID of the YouTube video." },
-                    title: { type: Type.STRING, description: "The title of the YouTube video." },
-                },
-                required: ["videoId", "title"],
-            },
-        },
-    },
-    required: ["videos"],
-};
-
-
 async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count: number = 7): Promise<Video[]> {
     if (isSimulationMode || !ai) return [];
     console.log(`Iniciando busca com fallback da IA para "${categoryTitle}"...`);
@@ -222,7 +202,7 @@ async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count:
 2.  O conteúdo DEVE ser educativo: tutoriais, aulas, dicas de alta qualidade.
 3.  **VERIFIQUE CADA VÍDEO**: Certifique-se de que os vídeos existem e não são privados antes de responder. A precisão é fundamental.
 4.  Extraia o ID de 11 caracteres de cada vídeo (ex: 'dQw4w9WgXcQ').
-5.  Responda APENAS com o JSON no formato definido. Não inclua texto adicional.`;
+5.  Responda APENAS com um objeto JSON contendo uma chave "videos", que é um array de objetos com chaves "videoId" e "title". Não inclua texto adicional.`;
     
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
@@ -230,12 +210,10 @@ async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count:
             contents: prompt,
             config: { 
                 tools: [{ googleSearch: {} }],
-                responseMimeType: "application/json",
-                responseSchema: youtubeSearchSchema,
             },
         });
         
-        const parsedJson = JSON.parse(response.text);
+        const parsedJson = cleanAndParseJson(response.text);
         const candidates: { videoId: string; title: string }[] = parsedJson.videos || [];
 
         if (!candidates || candidates.length === 0) {
