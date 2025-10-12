@@ -198,28 +198,53 @@ export const generateLiveStyles = async (prompt: string): Promise<string> => {
 };
 
 export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
-    // Fix: Specify GenerateContentResponse type for the API call.
-    const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Encontre 5 músicas no YouTube relacionadas a: "${query}". Para cada música, forneça o ID do vídeo, título, nome do artista e a URL da thumbnail. Responda em formato JSON.`,
-        config: {
-             responseMimeType: "application/json",
-             responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        id: { type: Type.STRING },
-                        title: { type: Type.STRING },
-                        artist: { type: Type.STRING },
-                        thumbnailUrl: { type: Type.STRING },
-                    },
-                     required: ["id", "title", "artist", "thumbnailUrl"],
-                }
-             }
+    if (!YOUTUBE_API_KEY) {
+        throw new Error("A chave da API do YouTube não foi configurada.");
+    }
+
+    // Enhance query for better music results
+    const searchQuery = `${query} official audio | ${query} lyrics | ${query} music`;
+
+    try {
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoCategoryId=10&maxResults=10&key=${YOUTUBE_API_KEY}&relevanceLanguage=pt`;
+        
+        const response = await fetch(searchUrl);
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error("YouTube Music Search API Error:", errorData);
+            if (response.status === 403) {
+                 throw new Error("Busca de músicas indisponível. A chave da API do YouTube é inválida ou expirou.");
+            }
+            throw new Error(`Falha na busca de músicas. Status: ${response.status}`);
         }
-    }), 'searchYouTubeMusic');
-    return JSON.parse(response.text) as YouTubeTrack[];
+        
+        const data = await response.json();
+
+        if (!data.items || data.items.length === 0) {
+            return [];
+        }
+        
+        // Sanitize title to remove common extra text
+        const sanitizeTitle = (title: string) => {
+             return title.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').replace(/official video/i, '').replace(/music video/i, '').replace(/lyrics/i, '').trim();
+        };
+
+        const tracks: YouTubeTrack[] = data.items
+            .filter((item: any) => item.id?.videoId && item.snippet?.title)
+            .map((item: any) => ({
+                id: item.id.videoId,
+                title: sanitizeTitle(item.snippet.title),
+                artist: item.snippet.channelTitle,
+                thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+            }));
+            
+        return tracks;
+
+    } catch (error) {
+        console.error("An unexpected error occurred during the YouTube Music API search:", error);
+        if (error instanceof Error) throw error;
+        throw new Error("Falha ao se comunicar com a API do YouTube para buscar músicas.");
+    }
 };
 
 export const generateEbookProjectStream = async function* (topic: string, numChapters: number): AsyncGenerator<string> {
