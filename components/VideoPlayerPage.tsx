@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+// components/VideoPlayerPage.tsx
+import React, { useState, useEffect, useMemo } from 'react';
+import YouTube from 'react-youtube';
 import type { LearningCategory, Video } from '../types';
 import Icon from './Icons';
 import VideoCard from './VideoCard';
 import SocialMediaModal from './SocialMediaModal';
-import { findVideos } from '../services/geminiService';
+import { findMoreVideos, findTikTokVideos, findInstagramVideos } from '../services/geminiService';
 import SocialEmbed from './SocialEmbed';
 
 interface VideoPlayerPageProps {
@@ -12,8 +14,10 @@ interface VideoPlayerPageProps {
     onToggleVideoWatched: (videoId: string) => void;
     onAddVideos: (categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => void;
     onBack: () => void;
-    initialVideoId?: string | null;
+    initialVideoId: string | null;
 }
+
+type PlatformTab = 'youtube' | 'tiktok' | 'instagram';
 
 const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     category,
@@ -23,139 +27,128 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     onBack,
     initialVideoId,
 }) => {
-    const [activePlatform, setActivePlatform] = useState<'youtube' | 'tiktok' | 'instagram'>('youtube');
-    
-    const youtubeVideos = category.videos || [];
-    const tiktokVideos = category.tiktokVideos || [];
-    const instagramVideos = category.instagramVideos || [];
-
-    const videoLists = {
-        youtube: youtubeVideos,
-        tiktok: tiktokVideos,
-        instagram: instagramVideos,
-    };
-    
-    const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
+    const [activeTab, setActiveTab] = useState<PlatformTab>('youtube');
+    const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isLoadingNewVideos, setIsLoadingNewVideos] = useState(false);
-    const [searchError, setSearchError] = useState('');
 
-    // Effect to set the initial video based on props or defaults
+    const videosForTab = useMemo(() => {
+        switch (activeTab) {
+            case 'youtube':
+                return category.videos;
+            case 'tiktok':
+                return category.tiktokVideos || [];
+            case 'instagram':
+                return category.instagramVideos || [];
+            default:
+                return [];
+        }
+    }, [activeTab, category]);
+
     useEffect(() => {
-        const allVideos = [
-            ...youtubeVideos,
-            ...tiktokVideos,
-            ...instagramVideos,
-        ];
-
-        let videoToStartWith: Video | null = null;
-
-        // Prioritize the video passed from the dashboard
+        // On mount, set the initial video
         if (initialVideoId) {
-            videoToStartWith = allVideos.find(v => v.id === initialVideoId) || null;
+            const video = category.videos.find(v => v.id === initialVideoId);
+            if (video) {
+                setCurrentVideo(video);
+                setActiveTab('youtube');
+                return;
+            }
         }
-
-        // If no specific video is requested, default to the first available one.
-        if (!videoToStartWith) {
-            videoToStartWith = videoLists[activePlatform]?.[0] || allVideos[0] || null;
+        // Fallback to the first video of the default tab
+        if (category.videos.length > 0) {
+            setCurrentVideo(category.videos[0]);
+        } else if (category.tiktokVideos && category.tiktokVideos.length > 0) {
+            setCurrentVideo(category.tiktokVideos[0]);
+            setActiveTab('tiktok');
+        } else if (category.instagramVideos && category.instagramVideos.length > 0) {
+            setCurrentVideo(category.instagramVideos[0]);
+            setActiveTab('instagram');
         }
-        
-        setSelectedVideo(videoToStartWith);
-
-        // If a video was selected, ensure its platform is active
-        if (videoToStartWith && videoToStartWith.platform !== activePlatform) {
-            setActivePlatform(videoToStartWith.platform);
-        }
-        
-        setSearchError('');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [category, initialVideoId]);
+    
+    useEffect(() => {
+        // When tab changes, select the first video of that tab if one isn't already selected for that platform
+         if (!currentVideo || currentVideo.platform !== activeTab) {
+            setCurrentVideo(videosForTab[0] || null);
+        }
+    }, [activeTab, videosForTab, currentVideo]);
 
+    const handleSelectVideo = (video: Video) => {
+        setCurrentVideo(video);
+    };
 
     const handleFindMore = async () => {
         setIsLoadingNewVideos(true);
-        setSearchError('');
         try {
-            const newVideos = await findVideos(category.title, activePlatform);
-            if (newVideos && newVideos.length >= 5) {
-                onAddVideos(category.id, newVideos, activePlatform);
-            } else if (newVideos && newVideos.length > 0) {
-                 onAddVideos(category.id, newVideos, activePlatform);
-                 setSearchError(`A busca com IA encontrou apenas ${newVideos.length} vídeos. Tente novamente mais tarde.`);
+            let newVideos: Video[] = [];
+            if (activeTab === 'youtube') {
+                newVideos = await findMoreVideos(category.title, category.videos);
+            } else if (activeTab === 'tiktok') {
+                newVideos = await findTikTokVideos(category.title);
+            } else if (activeTab === 'instagram') {
+                newVideos = await findInstagramVideos(category.title);
+            }
+            if (newVideos.length > 0) {
+                onAddVideos(category.id, newVideos, activeTab);
+                 window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: `${newVideos.length} novos vídeos adicionados!` }}));
             } else {
-                setSearchError(`Nenhum vídeo novo encontrado para ${activePlatform}. A IA não conseguiu encontrar conteúdo relevante.`);
+                 window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Nenhum vídeo novo encontrado pela IA.' }}));
             }
         } catch (error) {
-            console.error(`Failed to find more videos for ${activePlatform}:`, error);
-            const message = error instanceof Error ? error.message : 'Ocorreu um erro ao buscar novos vídeos.';
-            setSearchError(message);
+            console.error("Failed to find more videos:", error);
+             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Falha ao buscar novos vídeos.' }}));
         } finally {
             setIsLoadingNewVideos(false);
         }
     };
     
-    const getShareUrl = () => {
-        if (!selectedVideo) return '';
-        if (activePlatform === 'youtube') return `https://www.youtube.com/watch?v=${selectedVideo.id}`;
-        if (activePlatform === 'tiktok') return `https://www.tiktok.com/@placeholder/video/${selectedVideo.id}`;
-        if (activePlatform === 'instagram') return `https://www.instagram.com/p/${selectedVideo.id}/`;
-        return '';
-    };
+    const isCurrentVideoWatched = currentVideo ? watchedVideos.has(currentVideo.id) : false;
+    const currentVideoUrl = currentVideo ? (
+        currentVideo.platform === 'youtube' ? `https://www.youtube.com/watch?v=${currentVideo.id}` :
+        currentVideo.platform === 'tiktok' ? `https://www.tiktok.com/oembed?url=https://www.tiktok.com/@fakeuser/video/${currentVideo.id}` : // Placeholder
+        `https://www.instagram.com/p/${currentVideo.id}/`
+    ) : '';
 
-    const renderPlayer = () => {
-        if (!selectedVideo) {
+    const PlayerContent = () => {
+        if (!currentVideo) {
             return (
-                <div className="w-full h-full bg-black flex flex-col items-center justify-center text-gray-500 rounded-lg">
-                    <Icon name="Film" className="w-24 h-24 mb-4" />
-                    <p className="text-xl">Selecione um vídeo para começar</p>
+                <div className="w-full h-full bg-black flex flex-col items-center justify-center text-gray-400">
+                    <Icon name="Film" className="w-16 h-16 mb-4" />
+                    <p>Selecione um vídeo da lista para começar.</p>
                 </div>
-            );
-        }
-
-        if (activePlatform === 'youtube') {
-            return (
-                <iframe
-                    key={selectedVideo.id}
-                    className="w-full h-full"
-                    src={`https://www.youtube.com/embed/${selectedVideo.id}?autoplay=1&rel=0`}
-                    title={selectedVideo.title}
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                ></iframe>
-            );
+            )
         }
         
-        return <SocialEmbed video={selectedVideo} platform={activePlatform} />;
-    };
-
-    const renderPlaylist = () => {
-        const currentList = videoLists[activePlatform];
-        if (currentList.length === 0) {
+        if (currentVideo.platform === 'youtube') {
             return (
-                <div className="text-center py-8 text-gray-500">
-                    <Icon name="Film" className="w-12 h-12 mx-auto mb-2" />
-                    <p>Nenhum vídeo nesta seção ainda.</p>
-                </div>
-            );
+                <YouTube 
+                    videoId={currentVideo.id}
+                    opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, modestbranding: 1, rel: 0 } }}
+                    className="w-full h-full"
+                    onEnd={() => onToggleVideoWatched(currentVideo.id)}
+                />
+            )
         }
-        return currentList.map(video => (
-            <VideoCard
-                key={`${activePlatform}-${video.id}`}
-                video={video}
-                isPlaying={selectedVideo?.id === video.id}
-                isWatched={watchedVideos.has(video.id)}
-                onSelect={() => setSelectedVideo(video)}
-            />
-        ));
+
+        return <SocialEmbed video={currentVideo} platform={currentVideo.platform} />;
     };
+    
+    const TabButton: React.FC<{tab: PlatformTab, icon: React.ComponentProps<typeof Icon>['name'], label: string}> = ({ tab, icon, label }) => (
+        <button
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === tab ? 'text-brand-red border-brand-red' : 'text-gray-400 border-transparent hover:text-white'}`}
+        >
+            <Icon name={icon} className="w-5 h-5" />
+            {label}
+        </button>
+    );
 
     return (
         <>
-            <div className="min-h-screen bg-darker text-white font-sans flex flex-col animate-fade-in">
-                {/* Header */}
+            <div className="min-h-screen bg-darker text-white font-sans flex flex-col">
                 <header className="bg-dark border-b border-gray-900 sticky top-0 z-20 flex-shrink-0">
-                    <div className="container mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+                    <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2">
                                 <Icon name="ChevronLeft" className="w-6 h-6" />
@@ -168,72 +161,83 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                         </div>
                     </div>
                 </header>
-                {/* Main Content */}
-                <main className="flex-grow container mx-auto px-4 sm:px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Player Section */}
-                    <div className="lg:col-span-2">
-                        <div className="aspect-video bg-black rounded-lg overflow-hidden shadow-2xl shadow-brand-red/10">
-                           {renderPlayer()}
+                
+                <div className="flex-grow container mx-auto flex flex-col lg:flex-row gap-6 p-4 sm:p-6 overflow-hidden">
+                    {/* Main Content: Video Player */}
+                    <main className="flex-grow flex flex-col bg-dark border border-gray-800 rounded-lg">
+                         <div className="w-full aspect-video bg-black rounded-t-lg">
+                            <PlayerContent />
+                         </div>
+                         <div className="p-4">
+                             <h2 className="text-lg font-bold text-white">{currentVideo?.title || 'Nenhum vídeo selecionado'}</h2>
+                             <div className="flex items-center justify-between mt-3">
+                                <button
+                                     onClick={() => currentVideo && onToggleVideoWatched(currentVideo.id)}
+                                     disabled={!currentVideo}
+                                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md transition-colors bg-gray-800 hover:bg-gray-700 disabled:opacity-50"
+                                 >
+                                    <Icon name="Check" className={`w-5 h-5 ${isCurrentVideoWatched ? 'text-green-400' : 'text-gray-500'}`} />
+                                     <span>{isCurrentVideoWatched ? 'Concluído' : 'Marcar como concluído'}</span>
+                                 </button>
+                                 <button
+                                     onClick={() => setIsShareModalOpen(true)}
+                                     disabled={!currentVideo}
+                                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md transition-colors bg-gray-800 hover:bg-gray-700 disabled:opacity-50"
+                                 >
+                                     <Icon name="Share" className="w-5 h-5" />
+                                     <span>Compartilhar</span>
+                                 </button>
+                             </div>
+                         </div>
+                    </main>
+
+                    {/* Sidebar: Playlist */}
+                    <aside className="w-full lg:w-1/3 lg:max-w-sm flex-shrink-0 bg-dark border border-gray-800 rounded-lg flex flex-col h-full max-h-[calc(100vh-150px)]">
+                        <div className="flex-shrink-0 border-b border-gray-800 flex">
+                            <TabButton tab="youtube" icon="Play" label="YouTube" />
+                            <TabButton tab="tiktok" icon="Film" label="TikTok" />
+                            <TabButton tab="instagram" icon="Sparkles" label="Instagram" />
                         </div>
-                        <div className="mt-4 p-4 bg-dark/50 border border-gray-800 rounded-lg">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h2 className="text-2xl font-display text-white">{selectedVideo?.title || 'Nenhum vídeo selecionado'}</h2>
-                                    <p className="text-sm text-gray-400 mt-1">{selectedVideo?.duration}</p>
+                         <div className="flex-grow overflow-y-auto p-2 space-y-2">
+                             {videosForTab.length > 0 ? (
+                                videosForTab.map(video => (
+                                    <VideoCard 
+                                        key={video.id}
+                                        video={video}
+                                        isPlaying={currentVideo?.id === video.id}
+                                        isWatched={watchedVideos.has(video.id)}
+                                        onSelect={() => handleSelectVideo(video)}
+                                    />
+                                ))
+                             ) : (
+                                <div className="p-8 text-center text-gray-500">
+                                    <p>Nenhum vídeo nesta categoria ainda.</p>
                                 </div>
-                                <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                                     <button
-                                        onClick={() => selectedVideo && onToggleVideoWatched(selectedVideo.id)}
-                                        disabled={!selectedVideo}
-                                        className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-semibold transition-colors disabled:opacity-50 ${
-                                            selectedVideo && watchedVideos.has(selectedVideo.id) ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
-                                        }`}
-                                    >
-                                        <Icon name="Check" className="w-4 h-4" />
-                                        <span>{selectedVideo && watchedVideos.has(selectedVideo.id) ? 'Concluído' : 'Concluir'}</span>
-                                    </button>
-                                     <button onClick={() => setIsShareModalOpen(true)} disabled={!selectedVideo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors disabled:opacity-50">
-                                        <Icon name="Share" className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {/* Playlist Section */}
-                    <div className="lg:col-span-1 bg-dark/50 border border-gray-800 rounded-lg flex flex-col max-h-[85vh]">
-                        <div className="flex-shrink-0 p-2 border-b border-gray-700">
-                             <div className="flex bg-gray-900/80 rounded-md p-1">
-                                <button onClick={() => setActivePlatform('youtube')} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${activePlatform === 'youtube' ? 'bg-brand-red text-white' : 'text-gray-400 hover:bg-gray-800'}`}>YouTube</button>
-                                <button onClick={() => setActivePlatform('tiktok')} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${activePlatform === 'tiktok' ? 'bg-brand-red text-white' : 'text-gray-400 hover:bg-gray-800'}`}>TikTok</button>
-                                <button onClick={() => setActivePlatform('instagram')} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${activePlatform === 'instagram' ? 'bg-brand-red text-white' : 'text-gray-400 hover:bg-gray-800'}`}>Instagram</button>
-                            </div>
-                        </div>
-                        <div className="flex-grow p-2 space-y-2 overflow-y-auto">
-                           {renderPlaylist()}
-                           {searchError && (
-                               <div className="p-4 text-center text-sm text-yellow-400 bg-yellow-900/30 rounded-lg mx-2">
-                                   {searchError}
-                               </div>
-                           )}
-                        </div>
-                        <div className="flex-shrink-0 p-3 border-t border-gray-700">
+                             )}
+                         </div>
+                         <div className="flex-shrink-0 p-3 border-t border-gray-800">
                              <button
-                                onClick={handleFindMore}
-                                disabled={isLoadingNewVideos}
-                                className="w-full flex items-center justify-center gap-2 bg-gray-700 hover:bg-brand-red text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
-                            >
-                                {isLoadingNewVideos ? 'Buscando...' : 'Encontrar Mais Vídeos com IA'}
-                            </button>
-                        </div>
-                    </div>
-                </main>
+                                 onClick={handleFindMore}
+                                 disabled={isLoadingNewVideos}
+                                 className="w-full flex items-center justify-center gap-2 bg-brand-red/20 text-brand-red font-semibold py-2 rounded-md hover:bg-brand-red/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                             >
+                                 {isLoadingNewVideos ? (
+                                     <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                 ) : (
+                                     <Icon name="Brain" className="w-5 h-5" />
+                                 )}
+                                 <span>Encontrar mais com IA</span>
+                             </button>
+                         </div>
+                    </aside>
+                </div>
             </div>
-            {selectedVideo && (
-                <SocialMediaModal
+            {currentVideo && (
+                 <SocialMediaModal
                     isOpen={isShareModalOpen}
                     onClose={() => setIsShareModalOpen(false)}
-                    videoUrl={getShareUrl()}
-                    videoTitle={selectedVideo.title}
+                    videoUrl={currentVideoUrl}
+                    videoTitle={currentVideo.title}
                 />
             )}
         </>
