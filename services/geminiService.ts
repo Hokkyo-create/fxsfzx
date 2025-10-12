@@ -1,3 +1,5 @@
+// services/geminiService.ts
+
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { ChatMessage, LearningCategory, MeetingMessage, Project, QuizQuestion, Video, VideoScript, YouTubeTrack, Notification } from "../types";
 import {
@@ -110,21 +112,6 @@ export const getChatbotResponse = async (prompt: string, history: ChatMessage[])
     }
 };
 
-const YOUTUBE_API_KEY = 'AIzaSyCdG02380LWWNLoj26TlypyF38wvjd-W8Y';
-
-async function verifyYouTubeVideo(videoId: string): Promise<boolean> {
-  if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
-    return false;
-  }
-  try {
-    const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
-    return response.ok;
-  } catch (error) {
-    console.warn(`Verification check via oEmbed failed for video ID ${videoId}`, error);
-    return false;
-  }
-}
-
 async function findSocialVideosWithGemini(platform: 'tiktok' | 'instagram', categoryTitle: string): Promise<Video[]> {
     if (isSimulationMode || !ai) {
         return platform === 'tiktok' ? getMockTikTokVideos() : getMockInstagramVideos();
@@ -193,9 +180,12 @@ Responda APENAS com um objeto JSON contendo uma chave "videos", que é um array 
     }
 }
 
-async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count: number = 7): Promise<Video[]> {
-    if (isSimulationMode || !ai) return [];
-    console.log(`Iniciando busca com fallback da IA para "${categoryTitle}"...`);
+async function findYouTubeVideosWithGemini(categoryTitle: string, count: number = 7): Promise<Video[]> {
+    if (isSimulationMode || !ai) {
+        console.log(`Modo de simulação ou IA não inicializada. A busca por "${categoryTitle}" não será executada.`);
+        return [];
+    }
+    console.log(`Iniciando busca com IA para "${categoryTitle}"...`);
     
     const prompt = `Sua tarefa é encontrar exatamente ${count} vídeos do YouTube sobre "${categoryTitle}". Siga estas regras CRÍTICAS:
 1.  Use a ferramenta de Busca Google para encontrar vídeos REAIS, PÚBLICOS e em PORTUGUÊS DO BRASIL.
@@ -217,36 +207,36 @@ async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count:
         const candidates: { videoId: string; title: string }[] = parsedJson.videos || [];
 
         if (!candidates || candidates.length === 0) {
-            console.warn("IA não retornou candidatos válidos no fallback.");
+            console.warn("IA não retornou candidatos válidos.");
             return [];
         }
 
-        // FIX: Add explicit return type `Promise<Video | null>` to the async map callback to ensure type compatibility with the `v is Video` type predicate in the subsequent filter.
-        const verificationPromises = candidates.map(async (candidate): Promise<Video | null> => {
-            if (candidate.videoId && candidate.title) {
-                const isValid = await verifyYouTubeVideo(candidate.videoId);
-                if (isValid) {
+        // Remove the slow and flaky oEmbed verification. Trust Gemini's search but validate the ID format.
+        const validVideos = candidates
+            // FIX: Explicitly setting the return type to `Video | null` tells TypeScript
+            // that the returned objects conform to the `Video` interface, resolving the
+            // type predicate error in the subsequent `.filter()` call.
+            .map((candidate): Video | null => {
+                if (candidate.videoId && candidate.title && /^[a-zA-Z0-9_-]{11}$/.test(candidate.videoId)) {
                     return {
                         id: candidate.videoId,
                         title: candidate.title,
-                        duration: '??:??',
+                        duration: '??:??', // Duration is not available without another API call, so we keep the placeholder.
                         thumbnailUrl: `https://i.ytimg.com/vi/${candidate.videoId}/mqdefault.jpg`,
-                        platform: 'youtube',
+                        platform: 'youtube' as const,
                     };
                 }
-            }
-            return null;
-        });
-
-        const verifiedResults = await Promise.all(verificationPromises);
-        const validVideos = verifiedResults.filter((v): v is Video => v !== null);
+                return null;
+            })
+            .filter((v): v is Video => v !== null);
         
-        console.log(`Busca de fallback concluída. Encontrados ${validVideos.length} vídeos válidos de ${candidates.length} candidatos.`);
+        console.log(`Busca com IA concluída. Encontrados ${validVideos.length} vídeos válidos de ${candidates.length} candidatos.`);
         return validVideos.slice(0, count);
 
     } catch(error) {
-        console.error("Erro durante a chamada da IA na busca de fallback:", error);
-        handleApiError(error);
+        console.error("Erro durante a chamada da IA na busca de vídeos:", error);
+        handleApiError(error); // This might enable simulation mode globally
+        // Re-throw a user-friendly error to be displayed in the UI.
         throw new Error(`A busca com IA para "${categoryTitle}" falhou. Verifique a conexão ou a cota da API.`);
     }
 }
@@ -255,48 +245,8 @@ export const findVideos = async (categoryTitle: string, platform: 'youtube' | 't
     if (isSimulationMode) return [];
     
     if (platform === 'youtube') {
-        if (!YOUTUBE_API_KEY) {
-            console.warn("A chave da API do YouTube não está configurada. Usando fallback de IA.");
-            return findYouTubeVideosWithGeminiFallback(categoryTitle);
-        }
-        
-        const query = encodeURIComponent(`${categoryTitle} tutoriais aulas dicas em português`);
-        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&maxResults=7&type=video&videoEmbeddable=true&key=${YOUTUBE_API_KEY}`;
-        
-        try {
-            const response = await fetch(url);
-            const data = await response.json();
-            if (!response.ok) {
-                console.error("YouTube API Error:", JSON.stringify(data, null, 2));
-                const notification: Notification = {
-                    type: 'info',
-                    message: 'API do YouTube indisponível. Usando busca alternativa com IA.'
-                };
-                window.dispatchEvent(new CustomEvent('app-notification', { detail: notification }));
-                if (data?.error?.message.includes('are blocked')) {
-                    console.warn('Direct YouTube API call failed, falling back to Gemini search.');
-                    return findYouTubeVideosWithGeminiFallback(categoryTitle);
-                }
-                throw new Error(data.error?.message || "Ocorreu um erro ao buscar vídeos no YouTube.");
-            }
-            if (!data.items || data.items.length === 0) return [];
-            return data.items.map((item: any) => ({
-                id: item.id.videoId,
-                title: item.snippet.title,
-                duration: '??:??',
-                thumbnailUrl: item.snippet.thumbnails.medium.url,
-                platform: 'youtube' as const,
-            }));
-        } catch (error) {
-            console.error(`Error finding YouTube videos for "${categoryTitle}":`, error);
-            const notification: Notification = {
-                type: 'info',
-                message: 'Falha na busca do YouTube. Usando busca alternativa com IA.'
-            };
-            window.dispatchEvent(new CustomEvent('app-notification', { detail: notification }));
-            console.warn('Fallback to Gemini search due to an unexpected error.');
-            return findYouTubeVideosWithGeminiFallback(categoryTitle);
-        }
+        // ALWAYS use the Gemini search as the primary, more reliable method.
+        return findYouTubeVideosWithGemini(categoryTitle);
     }
 
     return findSocialVideosWithGemini(platform, categoryTitle);
