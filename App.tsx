@@ -13,8 +13,7 @@ import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import ProfileModal from './components/ProfileModal';
 import MusicPlayer from './components/MusicPlayer';
-import NotificationBanner from './components/NotificationBanner';
-import { getMeetingChatResponse, enableSimulationMode as enableGeminiSimulationMode } from './services/geminiService';
+import { getMeetingChatResponse } from './services/geminiService';
 import {
     setupMessagesListener,
     setupPresence,
@@ -29,7 +28,6 @@ import {
     getUserProgress,
     updateUserProgress,
 } from './services/supabaseService';
-import Icon from './components/Icons';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 const App: React.FC = () => {
@@ -42,10 +40,8 @@ const App: React.FC = () => {
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     
-    const [notification, setNotification] = useState<Notification | null>(null);
     // PWA Install Prompt
     const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
-    const [isSimulationMode, setIsSimulationMode] = useState(false);
 
     // Meeting state
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
@@ -74,27 +70,6 @@ const App: React.FC = () => {
             setInstallPrompt(e);
         };
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-        
-        // Listener for API Quota errors
-        const handleQuotaExceeded = () => {
-            console.warn("Evento de cota excedida recebido. Ativando o modo de simulação global.");
-            setIsSimulationMode(true);
-            enableGeminiSimulationMode(); // Notify the service to use mocks for all subsequent calls
-        };
-        window.addEventListener('quotaExceeded', handleQuotaExceeded);
-
-        // Listener for global app notifications from services
-        const handleAppNotification = (e: Event) => {
-            const detail = (e as CustomEvent).detail as Notification;
-            setNotification(detail);
-            
-            // Auto-dismiss after 7 seconds
-            setTimeout(() => {
-                setNotification(current => (current?.message === detail.message ? null : current));
-            }, 7000);
-        };
-        window.addEventListener('app-notification', handleAppNotification);
-
 
         // Apply custom admin styles
         const customStyles = localStorage.getItem('arc7hive_custom_styles');
@@ -125,8 +100,6 @@ const App: React.FC = () => {
         
         return () => {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-            window.removeEventListener('quotaExceeded', handleQuotaExceeded);
-            window.removeEventListener('app-notification', handleAppNotification);
         };
     }, []);
 
@@ -184,7 +157,7 @@ const App: React.FC = () => {
         const handler = setTimeout(() => {
             updateUserProgress(currentUser.name, watchedVideos).catch(err => {
                 console.error("Failed to sync progress:", err);
-                setNotification({type: 'error', message: 'Falha ao sincronizar seu progresso.'});
+                // Here you might want a small, non-intrusive indicator of sync failure
             });
         }, 1500);
 
@@ -199,7 +172,9 @@ const App: React.FC = () => {
         
         const unsubscribe = setupVideosListener((videosByCategory, error) => {
             if (error) {
-                 setNotification({type: 'error', message: formatSupabaseError(error, 'trilhas de conhecimento') || 'Erro desconhecido.'});
+                 // Errors are now handled locally in components that need this data, like Dashboard.
+                 // For now, we can just log it or set a fallback state.
+                 console.error(formatSupabaseError(error, 'trilhas de conhecimento'));
             } else {
                 setLearningCategories(currentCategories => 
                     currentCategories.map(cat => ({
@@ -273,7 +248,8 @@ const App: React.FC = () => {
                  await sendMessage('ARC7', responseText, 'https://placehold.co/100x100/71717A/FFFFFF?text=AI');
             }
         } catch (error) {
-            setNotification({ type: 'error', message: `Falha ao enviar mensagem: ${error instanceof Error ? error.message : 'Erro desconhecido'}` });
+            // Handle send message error locally if needed, e.g., show a small 'x' next to the message
+            console.error(`Falha ao enviar mensagem: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
         }
     }, [currentUser, isMeetingAiActive, meetingMessages]);
     
@@ -321,11 +297,9 @@ const App: React.FC = () => {
             await addVideos(categoryId, 'youtube', newVideos);
             // The real-time listener will handle the UI update.
         } catch (error) {
-            const errorMessage = formatSupabaseError(error as PostgrestError, 'salvar vídeos');
-            setNotification({
-                type: 'error',
-                message: errorMessage || 'Ocorreu um erro desconhecido ao salvar os vídeos.'
-            });
+            console.error(error); // The component calling this should handle the user-facing error.
+            // Re-throw the error so the calling component knows the operation failed.
+            throw error;
         }
     }, []);
 
@@ -364,13 +338,6 @@ const App: React.FC = () => {
         return null;
     }, [learningCategories, watchedVideos]);
     
-    const SimulationModeBanner = () => (
-        <div className="bg-yellow-500/20 border-b-2 border-yellow-600 text-yellow-200 text-sm text-center p-2 z-50 sticky top-0">
-            <Icon name="Wrench" className="w-4 h-4 inline-block mr-2 -mt-1" />
-            <b>Modo de Simulação Ativado:</b> A cota da API foi excedida. A aplicação está usando dados de exemplo.
-        </div>
-    );
-
     const renderContent = () => {
         if (!currentUser) {
             return <LoginPage onLogin={handleLogin} />;
@@ -457,13 +424,6 @@ const App: React.FC = () => {
 
     return (
         <>
-            {isSimulationMode && <SimulationModeBanner />}
-            {notification && (
-                <NotificationBanner 
-                    message={notification.message}
-                    type={notification.type}
-                    onClose={() => setNotification(null)} />
-            )}
             {renderContent()}
             {showChatbot && <Chatbot />}
             {showMusicPlayer && <MusicPlayer playlist={playlist} error={playlistError} />}

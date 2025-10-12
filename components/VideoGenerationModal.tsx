@@ -3,6 +3,8 @@ import type { Project, VideoScript } from '../types';
 import Icon from './Icons';
 import { generateVideoScript, generateVideo, checkVideoOperationStatus } from '../services/geminiService';
 import StitchedVideoPlayer from './StitchedVideoPlayer';
+// Fix: Import the Operation type from @google/genai to correctly type the video generation operation object.
+import type { Operation } from '@google/genai';
 
 interface VideoGenerationModalProps {
     isOpen: boolean;
@@ -60,7 +62,8 @@ const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({ isOpen, onC
             
             for (let i = 0; i < totalScenes; i++) {
                 const scene = generatedScript.scenes[i];
-                let operation = await generateVideo(scene.prompt);
+                // Fix: Type the operation variable as Operation to resolve property access errors.
+                let operation: Operation = await generateVideo(scene.prompt);
                 
                 while (!operation.done) {
                     await new Promise(resolve => setTimeout(resolve, 10000));
@@ -132,7 +135,7 @@ const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({ isOpen, onC
                              {(status !== 'idle' && status !== 'completed' && status !== 'error') && (
                                 <div className="w-full max-w-md">
                                     <div className="flex items-center gap-3 text-lg text-yellow-300">
-                                         <svg className="animate-spin h-6 w-6" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                         <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                                         <p>{statusMessages[status]}</p>
                                     </div>
                                     <div className="w-full bg-gray-700 rounded-full h-2.5 mt-4">
