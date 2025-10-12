@@ -31,6 +31,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist, error }) => {
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isPlayerReady, setIsPlayerReady] = useState(false);
     
     // YouTube search state
     const [searchQuery, setSearchQuery] = useState('');
@@ -92,7 +93,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist, error }) => {
                 width: '1',
                 playerVars: { 'controls': 0 }, // Autoplay is unreliable, we'll control it manually
                 events: {
-                    'onReady': () => console.log("YouTube Player Ready"),
+                    'onReady': () => {
+                        console.log("YouTube Player Ready");
+                        setIsPlayerReady(true);
+                    },
                     'onStateChange': onPlayerStateChange
                 }
             });
@@ -136,7 +140,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist, error }) => {
         const newTime = (clickX / rect.width) * duration;
         
         if(mode === 'playlist' && audioRef.current) audioRef.current.currentTime = newTime;
-        if(mode === 'youtube' && youtubePlayerRef.current) youtubePlayerRef.current.seekTo(newTime, true);
+        if(mode === 'youtube' && youtubePlayerRef.current && isPlayerReady) youtubePlayerRef.current.seekTo(newTime, true);
         setProgress(newTime);
     }
 
@@ -148,7 +152,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist, error }) => {
         setDuration(0);
 
         if (newMode === 'playlist') {
-            if (youtubePlayerRef.current?.stopVideo) youtubePlayerRef.current.stopVideo();
+             if (youtubePlayerRef.current?.stopVideo && isPlayerReady) youtubePlayerRef.current.stopVideo();
         } else {
              if (audioRef.current) audioRef.current.pause();
         }
@@ -164,12 +168,14 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist, error }) => {
                 if (mode === 'playlist' && audioRef.current) {
                     audioRef.current.play().catch(e => console.error("Audio play failed:", e));
                 } else if (mode === 'youtube' && youtubePlayerRef.current?.playVideo) {
+                    if (!isPlayerReady) return;
                     youtubePlayerRef.current.playVideo();
                 }
             } else {
                 if (mode === 'playlist' && audioRef.current) {
                     audioRef.current.pause();
                 } else if (mode === 'youtube' && youtubePlayerRef.current?.pauseVideo) {
+                    if (!isPlayerReady) return;
                     youtubePlayerRef.current.pauseVideo();
                 }
             }
@@ -203,7 +209,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist, error }) => {
     }
     
     const playYoutubeTrack = (track: YouTubeTrack) => {
-        if (!youtubePlayerRef.current) {
+        if (!youtubePlayerRef.current || !isPlayerReady) {
             console.error("YouTube player is not ready to play.");
             return;
         }
