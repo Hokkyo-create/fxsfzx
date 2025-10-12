@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { users, categories as initialCategories } from './data';
-import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Song, Notification } from './types';
+import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Song, Notification, NextVideoInfo } from './types';
 import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
@@ -25,15 +25,19 @@ import {
     setupPlaylistListener,
     formatSupabaseError,
     setupVideosListener,
-    addVideos
+    addVideos,
+    getUserProgress,
+    updateUserProgress,
 } from './services/supabaseService';
 import Icon from './components/Icons';
+import type { PostgrestError } from '@supabase/supabase-js';
 
 const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [showWelcome, setShowWelcome] = useState(false);
     const [learningCategories, setLearningCategories] = useState<LearningCategory[]>(initialCategories);
     const [selectedCategory, setSelectedCategory] = useState<LearningCategory | null>(null);
+    const [initialVideoId, setInitialVideoId] = useState<string | null>(null);
     const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -59,8 +63,10 @@ const App: React.FC = () => {
     // Music Player state
     const [playlist, setPlaylist] = useState<Song[]>([]);
     const [playlistError, setPlaylistError] = useState<string | null>(null);
+    
+    const isInitialProgressLoad = useRef(true); // To prevent writing progress back on initial load
 
-
+    // Initial setup and auto-login
     useEffect(() => {
         // PWA install prompt handler
         const handleBeforeInstallPrompt = (e: Event) => {
@@ -99,21 +105,23 @@ const App: React.FC = () => {
             document.head.appendChild(styleElement);
         }
 
-        // Load user from localStorage
-        const storedUserName = localStorage.getItem('arc7hive_user');
-        if (storedUserName) {
-            const foundUser = users.find(u => u.name === storedUserName);
-            if (foundUser) {
-                const storedAvatar = localStorage.getItem(`arc7hive_avatar_${foundUser.name}`);
-                const userWithAvatar = { ...foundUser, avatarUrl: storedAvatar || foundUser.avatarUrl };
-                setCurrentUser(userWithAvatar);
-                
-                try {
-                    const storedProgress = localStorage.getItem(`arc7hive_progress_${foundUser.name}`);
-                    if (storedProgress) setWatchedVideos(new Set(JSON.parse(storedProgress)));
-                } catch (error) { console.error("Failed to parse progress", error); }
+        // Auto-login user from localStorage
+        const autoLogin = async () => {
+            const storedUserName = localStorage.getItem('arc7hive_user');
+            if (storedUserName) {
+                const foundUser = users.find(u => u.name === storedUserName);
+                if (foundUser) {
+                    const storedAvatar = localStorage.getItem(`arc7hive_avatar_${foundUser.name}`);
+                    const userWithAvatar = { ...foundUser, avatarUrl: storedAvatar || foundUser.avatarUrl };
+                    setCurrentUser(userWithAvatar);
+                    
+                    const progress = await getUserProgress(foundUser.name);
+                    setWatchedVideos(progress);
+                    isInitialProgressLoad.current = true;
+                }
             }
-        }
+        };
+        autoLogin();
         
         return () => {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -164,11 +172,25 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, []);
     
-    // Effect to persist watched videos progress
+    // Effect to persist watched videos progress to Supabase (debounced)
     useEffect(() => {
-        if (currentUser) {
-            localStorage.setItem(`arc7hive_progress_${currentUser.name}`, JSON.stringify(Array.from(watchedVideos)));
+        if (isInitialProgressLoad.current) {
+            isInitialProgressLoad.current = false;
+            return;
         }
+
+        if (!currentUser) return;
+
+        const handler = setTimeout(() => {
+            updateUserProgress(currentUser.name, watchedVideos).catch(err => {
+                console.error("Failed to sync progress:", err);
+                setNotification({type: 'error', message: 'Falha ao sincronizar seu progresso.'});
+            });
+        }, 1500);
+
+        return () => {
+            clearTimeout(handler);
+        };
     }, [watchedVideos, currentUser]);
     
     // Effect for Supabase Learning Videos Sync
@@ -193,14 +215,16 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, [currentUser]);
 
-    const handleLogin = (user: User) => {
+    const handleLogin = async (user: User) => {
         const storedAvatar = localStorage.getItem(`arc7hive_avatar_${user.name}`);
         const userToLogin = { ...user, avatarUrl: storedAvatar || user.avatarUrl };
         setCurrentUser(userToLogin);
         localStorage.setItem('arc7hive_user', user.name);
         setShowWelcome(true);
-        const storedProgress = localStorage.getItem(`arc7hive_progress_${user.name}`);
-        setWatchedVideos(new Set(storedProgress ? JSON.parse(storedProgress) : []));
+        
+        const progress = await getUserProgress(user.name);
+        setWatchedVideos(progress);
+        isInitialProgressLoad.current = true;
     };
 
     const handleLogout = () => {
@@ -266,9 +290,15 @@ const App: React.FC = () => {
     
     const handleWelcomeFinish = () => setShowWelcome(false);
 
-    const handleSelectCategory = (category: LearningCategory) => setSelectedCategory(category);
+    const handleSelectCategory = (category: LearningCategory, videoId?: string) => {
+        setSelectedCategory(category);
+        setInitialVideoId(videoId || null);
+    };
     
-    const handleBackToDashboard = () => setSelectedCategory(null);
+    const handleBackToDashboard = () => {
+        setSelectedCategory(null);
+        setInitialVideoId(null);
+    };
 
     const handleUpdateAvatar = async (newAvatarUrl: string) => {
         if (!currentUser) return;
@@ -289,13 +319,52 @@ const App: React.FC = () => {
     };
     
     const handleAddVideosToCategory = useCallback(async (categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => {
-        await addVideos(categoryId, platform, newVideos);
-        // The real-time listener will handle the UI update.
+        try {
+            await addVideos(categoryId, platform, newVideos);
+            // The real-time listener will handle the UI update.
+        } catch (error) {
+            const errorMessage = formatSupabaseError(error as PostgrestError, 'salvar vídeos');
+            setNotification({
+                type: 'error',
+                message: errorMessage || 'Ocorreu um erro desconhecido ao salvar os vídeos.'
+            });
+        }
     }, []);
 
     const totalVideos = useMemo(() => learningCategories.reduce((acc, cat) => acc + cat.videos.length, 0), [learningCategories]);
     const completedVideos = watchedVideos.size;
     const overallProgress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+
+    const nextVideoInfo: NextVideoInfo | null = useMemo(() => {
+        // Find the first category with partial progress
+        const partiallyWatchedCategory = learningCategories.find(cat => {
+            const total = cat.videos.length;
+            if (total === 0) return false;
+            const watchedCount = cat.videos.filter(v => watchedVideos.has(v.id)).length;
+            return watchedCount > 0 && watchedCount < total;
+        });
+    
+        const categoryToSearch = partiallyWatchedCategory || learningCategories.find(c => c.videos.length > 0);
+    
+        if (categoryToSearch) {
+            const nextVideo = categoryToSearch.videos.find(v => !watchedVideos.has(v.id));
+            if (nextVideo) {
+                return { video: nextVideo, category: categoryToSearch };
+            }
+        }
+    
+        // Fallback: if all videos in partially watched categories are watched,
+        // or if no videos are watched at all, suggest the first video of the first category.
+        const firstCategoryWithVideos = learningCategories.find(c => c.videos.length > 0);
+        if (firstCategoryWithVideos && firstCategoryWithVideos.videos[0]) {
+            // Only suggest if it's not already watched (covers case where everything is watched)
+            if (!watchedVideos.has(firstCategoryWithVideos.videos[0].id)) {
+                return { video: firstCategoryWithVideos.videos[0], category: firstCategoryWithVideos };
+            }
+        }
+    
+        return null;
+    }, [learningCategories, watchedVideos]);
     
     const SimulationModeBanner = () => (
         <div className="bg-yellow-500/20 border-b-2 border-yellow-600 text-yellow-200 text-sm text-center p-2 z-50 sticky top-0">
@@ -360,6 +429,7 @@ const App: React.FC = () => {
                     onToggleVideoWatched={handleToggleVideoWatched}
                     onAddVideos={handleAddVideosToCategory}
                     onBack={handleBackToDashboard}
+                    initialVideoId={initialVideoId}
                 />
             );
         }
@@ -379,6 +449,7 @@ const App: React.FC = () => {
                 onNavigateToProjects={handleNavigateToProjects}
                 onOpenProfileModal={() => setIsProfileModalOpen(true)}
                 installPrompt={installPrompt}
+                nextVideoInfo={nextVideoInfo}
             />
         );
     };

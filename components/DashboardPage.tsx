@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import type { User, LearningCategory } from '../types';
+import type { User, LearningCategory, NextVideoInfo } from '../types';
 import CategoryCard from './CategoryCard';
 import Icon from './Icons';
 import Avatar from './Avatar';
+import ContinueLearningCard from './ContinueLearningCard';
 
 interface DashboardPageProps {
     user: User;
     onLogout: () => void;
-    onSelectCategory: (category: LearningCategory) => void;
+    onSelectCategory: (category: LearningCategory, videoId?: string) => void;
     overallProgress: number;
     completedVideos: number;
     totalVideos: number;
@@ -18,6 +19,7 @@ interface DashboardPageProps {
     onNavigateToProjects: () => void;
     onOpenProfileModal: () => void;
     installPrompt: Event | null;
+    nextVideoInfo: NextVideoInfo | null;
 }
 
 const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -34,6 +36,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     onNavigateToProjects,
     onOpenProfileModal,
     installPrompt,
+    nextVideoInfo,
 }) => {
     const [showIosInstallMessage, setShowIosInstallMessage] = useState(false);
 
@@ -114,6 +117,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
 
             {/* Main Content */}
             <main className="container mx-auto px-4 sm:px-6 py-8">
+                {/* Continue Learning Card */}
+                {nextVideoInfo && (
+                    <ContinueLearningCard
+                        nextVideoInfo={nextVideoInfo}
+                        onClick={() => onSelectCategory(nextVideoInfo.category, nextVideoInfo.video.id)}
+                    />
+                )}
+
                 {/* Progress Summary */}
                 <section className="progress-summary-card bg-dark/50 backdrop-blur-lg border border-gray-800/60 rounded-lg p-6 mb-8 shadow-2xl shadow-black/30">
                     <h1 className="text-3xl font-display tracking-wider text-white mb-2">Seu Progresso</h1>

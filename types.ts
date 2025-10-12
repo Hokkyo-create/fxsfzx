@@ -35,6 +35,11 @@ export interface LearningCategory {
   instagramVideos?: Video[];
 }
 
+export interface NextVideoInfo {
+  video: Video;
+  category: LearningCategory;
+}
+
 export interface Chapter {
     title: string;
     content: string;
@@ -42,7 +47,7 @@ export interface Chapter {
 }
 
 export interface Project {
-    id: string;
+    id:string;
     name: string; // Ebook title
     introduction: string;
     chapters: Chapter[];

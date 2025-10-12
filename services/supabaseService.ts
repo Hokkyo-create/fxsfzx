@@ -15,8 +15,12 @@ export const formatSupabaseError = (error: PostgrestError | Error | null, contex
         return `A tabela "${tableName}" não foi encontrada. Verifique se ela foi criada corretamente no seu projeto Supabase, usando o SQL Editor.`;
     }
     
-    if (error.message && (error.message.toLowerCase().includes('rls') || error.message.toLowerCase().includes('security policies'))) {
-        return `Acesso negado para "${context}". Verifique se as políticas de RLS (Row Level Security) estão habilitadas para leitura (SELECT) no seu painel do Supabase.`;
+    if (error.message && (error.message.toLowerCase().includes('rls') || error.message.toLowerCase().includes('security policies') || ('code' in error && error.code === '42501'))) {
+        let action = 'ler'; // Default action is read
+        if (error.message.toLowerCase().includes('violates row-level security policy')) {
+             action = 'gravar novos dados'; // This is an insert/update violation
+        }
+        return `Acesso negado para "${context}". Verifique se a política de RLS (Row Level Security) que permite ${action} está configurada no seu painel do Supabase.`;
     }
     
     return `Falha ao carregar ${context}. Detalhes: ${error.message}`;
@@ -252,6 +256,37 @@ export const addVideos = async (categoryId: string, platform: string, videos: Vi
         throw error;
     }
 };
+
+// User Progress Actions
+export const getUserProgress = async (userName: string): Promise<Set<string>> => {
+    const { data, error } = await supabase
+        .from('user_progress')
+        .select('watched_video_ids')
+        .eq('user_name', userName)
+        .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116: "object not found" - this is fine for new users
+        console.error('Error fetching user progress:', error);
+        return new Set();
+    }
+    return new Set(data?.watched_video_ids || []);
+};
+
+export const updateUserProgress = async (userName: string, watchedVideos: Set<string>): Promise<void> => {
+    const { error } = await supabase
+        .from('user_progress')
+        .upsert({ 
+            user_name: userName, 
+            watched_video_ids: Array.from(watchedVideos),
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'user_name' });
+
+    if (error) {
+        console.error("Error updating user progress:", error);
+        throw error;
+    }
+};
+
 
 // Music Actions
 export const uploadSong = async (file: File, title: string, artist: string): Promise<void> => {

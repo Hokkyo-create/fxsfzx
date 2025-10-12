@@ -12,6 +12,7 @@ interface VideoPlayerPageProps {
     onToggleVideoWatched: (videoId: string) => void;
     onAddVideos: (categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => void;
     onBack: () => void;
+    initialVideoId?: string | null;
 }
 
 const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
@@ -20,6 +21,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     onToggleVideoWatched,
     onAddVideos,
     onBack,
+    initialVideoId,
 }) => {
     const [activePlatform, setActivePlatform] = useState<'youtube' | 'tiktok' | 'instagram'>('youtube');
     
@@ -33,18 +35,41 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
         instagram: instagramVideos,
     };
     
-    const [selectedVideo, setSelectedVideo] = useState<Video | null>(videoLists[activePlatform][0] || null);
+    const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isLoadingNewVideos, setIsLoadingNewVideos] = useState(false);
     const [searchError, setSearchError] = useState('');
 
-    // Effect to update selected video when platform or category changes
+    // Effect to set the initial video based on props or defaults
     useEffect(() => {
-        const currentList = videoLists[activePlatform];
-        setSelectedVideo(currentList[0] || null);
-        setSearchError(''); // Clear error on platform switch
+        const allVideos = [
+            ...youtubeVideos,
+            ...tiktokVideos,
+            ...instagramVideos,
+        ];
+
+        let videoToStartWith: Video | null = null;
+
+        // Prioritize the video passed from the dashboard
+        if (initialVideoId) {
+            videoToStartWith = allVideos.find(v => v.id === initialVideoId) || null;
+        }
+
+        // If no specific video is requested, default to the first available one.
+        if (!videoToStartWith) {
+            videoToStartWith = videoLists[activePlatform]?.[0] || allVideos[0] || null;
+        }
+        
+        setSelectedVideo(videoToStartWith);
+
+        // If a video was selected, ensure its platform is active
+        if (videoToStartWith && videoToStartWith.platform !== activePlatform) {
+            setActivePlatform(videoToStartWith.platform);
+        }
+        
+        setSearchError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activePlatform, category]);
+    }, [category, initialVideoId]);
 
 
     const handleFindMore = async () => {
