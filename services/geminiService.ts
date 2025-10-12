@@ -247,7 +247,7 @@ async function findYouTubeVideosWithGeminiFallback(categoryTitle: string, count:
     } catch(error) {
         console.error("Erro durante a chamada da IA na busca de fallback:", error);
         handleApiError(error);
-        return [];
+        throw new Error(`A busca com IA para "${categoryTitle}" falhou. Verifique a conexão ou a cota da API.`);
     }
 }
 
