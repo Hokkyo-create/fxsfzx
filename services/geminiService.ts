@@ -15,8 +15,6 @@ import {
     getMockVideoScript,
     getMockYouTubeMusic,
     getMockFindMoreVideos,
-    getMockTikTokVideos,
-    getMockInstagramVideos,
     quizSchema,
     videoScriptSchema
 } from "./geminiServiceMocks";
@@ -64,6 +62,80 @@ try {
     enableSimulationMode();
 }
 
+// Helper function to extract and parse JSON from a markdown code block
+const cleanAndParseJson = (rawText: string): any => {
+    const match = rawText.match(/```json\n([\s\S]*?)\n```/);
+    if (!match || !match[1]) {
+        // Fallback for cases where the model doesn't use a code block but returns raw JSON
+        try {
+            return JSON.parse(rawText.trim());
+        } catch {
+            throw new Error("A IA retornou uma resposta em formato inválido e não pôde ser analisada.");
+        }
+    }
+    try {
+        return JSON.parse(match[1]);
+    } catch (e) {
+        console.error("Failed to parse JSON from code block:", e);
+        throw new Error("A IA retornou um JSON malformatado dentro do bloco de código.");
+    }
+};
+
+export const findMoreVideos = async (categoryTitle: string, existingVideos: Video[]): Promise<Video[]> => {
+    return handleApiCall(async () => {
+        const existingIds = existingVideos.map(v => v.id).join(', ') || 'Nenhum';
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Encontre 7 vídeos do YouTube sobre "${categoryTitle}" em português do Brasil. Os vídeos devem ser reais, públicos e ter thumbnails. Exclua estes IDs já existentes: ${existingIds}. Formate a resposta como um array JSON com objetos contendo: id (string de 11 caracteres), title (string) e duration (string 'MM:SS').`,
+            config: {
+                tools: [{ googleSearch: {} }],
+            },
+        });
+
+        const jsonResponse = cleanAndParseJson(response.text);
+
+        if (!Array.isArray(jsonResponse)) {
+            console.warn("AI response was not a valid array:", jsonResponse);
+            return [];
+        }
+
+        const verificationPromises = jsonResponse.map(async (video: any): Promise<Video | null> => {
+            if (typeof video.id !== 'string' || video.id.length !== 11) {
+                return null; // Invalid ID format
+            }
+            try {
+                // Use YouTube's public oEmbed endpoint. It returns 404 for non-existent/private videos.
+                const oEmbedResponse = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${video.id}&format=json`);
+                if (!oEmbedResponse.ok) {
+                    return null; // Video does not exist or is private
+                }
+                const oEmbedData = await oEmbedResponse.json();
+                
+                // Ensure thumbnail is valid and not a placeholder
+                if (!oEmbedData.thumbnail_url || oEmbedData.thumbnail_url.includes('vi_webp')) {
+                    return null;
+                }
+
+                return {
+                    id: video.id,
+                    title: oEmbedData.title || video.title, // Prefer official title
+                    duration: video.duration,
+                    thumbnailUrl: oEmbedData.thumbnail_url,
+                    platform: 'youtube',
+                };
+            } catch (e) {
+                console.warn(`Error verifying video ID ${video.id}:`, e);
+                return null;
+            }
+        });
+
+        const verifiedVideos = (await Promise.all(verificationPromises)).filter((v): v is Video => v !== null);
+        
+        return verifiedVideos;
+    }, getMockFindMoreVideos);
+};
+
 // --- Chat Functions ---
 
 export const getMeetingChatResponse = (aiPrompt: string, meetingMessages: MeetingMessage[]): Promise<string> => {
@@ -76,52 +148,88 @@ export const getMeetingChatResponse = (aiPrompt: string, meetingMessages: Meetin
             model: 'gemini-2.5-flash',
             contents: `Histórico da conversa:\n${history}\n\nO usuário @arc7 te perguntou: "${aiPrompt}". Responda de forma concisa e útil.`,
             config: {
-                systemInstruction: "Você é um assistente IA chamado ARC7, focado em ajudar um time em uma reunião. Seja breve e direto."
-            }
+                systemInstruction: "Você é um assistente IA chamado ARC7, focado em ajudar um time em uma reunião. Seja direto e informativo.",
+            },
         });
         return response.text;
     }, getMockMeetingChatResponse);
 };
 
-export const getChatbotResponse = (text: string, currentHistory: ChatMessage[]): Promise<string> => {
+export const getChatbotResponse = (prompt: string, history: ChatMessage[]): Promise<string> => {
     return handleApiCall(async () => {
-        const contents = currentHistory.map(msg => ({
+        const chatHistory = history.map(msg => ({
             role: msg.role,
             parts: [{ text: msg.text }]
         }));
-        contents.push({ role: 'user', parts: [{ text }] });
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Um usuário está perguntando sobre a plataforma ARC7HIVE. A pergunta é: "${text}". Responda de forma amigável e informativa. Use markdown para formatação (negrito, listas).`,
+            contents: {
+                role: 'user',
+                parts: [{ text: prompt }],
+            },
             config: {
-                systemInstruction: "Você é o ARC7, o assistente IA da plataforma de aprendizado ARC7HIVE. Seu objetivo é ajudar os usuários a entenderem a plataforma, suas funcionalidades e o conteúdo disponível. A plataforma tem trilhas de conhecimento sobre IA, Marketing, Finanças, etc. Também tem uma área de projetos para criar ebooks com IA."
-            }
+                systemInstruction: "Você é o ARC7, um assistente IA da plataforma ARC7HIVE. Seu objetivo é ajudar os usuários a navegar e entender a plataforma. A plataforma possui trilhas de conhecimento sobre IA, Marketing, Finanças e mais. Os usuários podem conversar em uma sala de reunião, criar projetos de ebooks com IA e ouvir uma rádio. Seja amigável e informativo. Responda em markdown.",
+            },
+            history: chatHistory.slice(0, -1) // Send all but the current message
         });
         return response.text;
-    }, getMockChatbotResponse);
+    }, () => getMockChatbotResponse(false));
 };
 
-// --- Admin & Style Functions ---
-
+// --- Admin & Dev Functions ---
 export const generateLiveStyles = (prompt: string): Promise<string> => {
     return handleApiCall(async () => {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Gere apenas código CSS baseado no seguinte prompt. Não inclua a tag <style> ou qualquer explicação, apenas o CSS. O CSS será injetado diretamente em uma página com TailwindCSS, então use seletores que possam sobrescrever os estilos existentes, como IDs ou classes específicas (ex: .category-card, .dashboard-header, etc). Prompt: "${prompt}"`,
+            contents: `Baseado no seguinte pedido: "${prompt}", gere apenas o código CSS para estilizar os seguintes componentes da aplicação ARC7HIVE:
+            - body (backgrounds, fontes)
+            - .dashboard-header (cabeçalho principal)
+            - .progress-summary-card (card de progresso)
+            - .category-card (cards das trilhas de conhecimento)
+            O CSS deve ser moderno, usar variáveis se possível, e seguir a estética da Netflix/ARC7HIVE (cores escuras, vermelho como destaque). Não inclua a tag <style> ou qualquer outra coisa além do CSS.`,
             config: {
-                systemInstruction: "Você é um expert em CSS e TailwindCSS. Sua tarefa é gerar código CSS puro para customizar a aparência de um aplicativo web."
+                systemInstruction: "Você é um especialista em CSS que gera código limpo e moderno.",
             }
         });
-        // Clean up markdown code block if present
-        return response.text.replace(/```css\n|```/g, '').trim();
+        const cssCode = response.text.replace(/```css\n?|```/g, '').trim();
+        return cssCode;
     }, getMockLiveStyles);
 };
 
 
-// --- Project & Content Generation ---
+// --- Music Functions ---
+export const searchYouTubeMusic = (query: string): Promise<YouTubeTrack[]> => {
+    return handleApiCall(async () => {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Encontre 5 músicas no YouTube relacionadas a: "${query}". Para cada música, forneça o ID do vídeo, título, nome do artista e a URL da thumbnail. Responda em formato JSON.`,
+            config: {
+                 responseMimeType: "application/json",
+                 responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            id: { type: Type.STRING },
+                            title: { type: Type.STRING },
+                            artist: { type: Type.STRING },
+                            thumbnailUrl: { type: Type.STRING },
+                        },
+                         required: ["id", "title", "artist", "thumbnailUrl"],
+                    }
+                 }
+            }
+        });
+        const parsedJson = JSON.parse(response.text);
+        return parsedJson as YouTubeTrack[];
+    }, getMockYouTubeMusic);
+};
 
-export async function* generateEbookProjectStream(topic: string, chapters: number): AsyncGenerator<string> {
+
+// --- Ebook/Project Generation ---
+
+export const generateEbookProjectStream = async function* (topic: string, numChapters: number): AsyncGenerator<string> {
     if (isSimulationMode) {
         for (const chunk of getMockEbookStream()) {
             await new Promise(resolve => setTimeout(resolve, 50));
@@ -132,275 +240,121 @@ export async function* generateEbookProjectStream(topic: string, chapters: numbe
     try {
         const stream = await ai.models.generateContentStream({
             model: 'gemini-2.5-flash',
-            contents: `Crie o conteúdo completo para um ebook sobre "${topic}". O ebook deve ter ${chapters} capítulos. Formate a saída estritamente da seguinte forma, usando estas tags exatas:
-# [Título do Ebook]
-[INTRODUÇÃO]
-... conteúdo da introdução ...
-[CAPÍTULO 1: Título do Capítulo 1]
-... conteúdo do capítulo 1 ...
-[CAPÍTULO 2: Título do Capítulo 2]
-... conteúdo do capítulo 2 ...
-... (e assim por diante para todos os capítulos) ...
-[CONCLUSÃO]
-... conteúdo da conclusão ...
-
-Não adicione nenhuma outra formatação, explicação ou texto fora desta estrutura.`,
+            contents: `Crie um ebook detalhado sobre "${topic}" com ${numChapters} capítulos. Formate a resposta em markdown. Comece com '# ' para o título. Use '[INTRODUÇÃO]' antes da introdução, '[CAPÍTULO X: Título do Capítulo]' para cada capítulo, e '[CONCLUSÃO]' para a conclusão. Escreva conteúdo substancial para cada seção.`,
             config: {
-                systemInstruction: "Você é um escritor especialista e criador de conteúdo digital. Sua tarefa é gerar o texto completo para um ebook baseado em um tópico fornecido."
+                systemInstruction: "Você é um escritor especialista em criar conteúdo educacional estruturado em formato de ebook.",
             }
         });
-
         for await (const chunk of stream) {
             yield chunk.text;
         }
-    } catch (error: any) {
-        console.error("Gemini Stream Error:", error);
-        // This is a special case for generators where handleApiCall doesn't wrap the whole thing
-        if (error.message && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('billing'))) {
+    } catch(e: any) {
+        console.error("Gemini stream error:", e);
+        if (e.message.toLowerCase().includes('quota')) {
             window.dispatchEvent(new CustomEvent('quotaExceeded'));
-            enableSimulationMode();
+            // Yield a mock stream on quota failure during generation
             for (const chunk of getMockEbookStream()) {
                 await new Promise(resolve => setTimeout(resolve, 50));
                 yield chunk;
             }
         } else {
-             throw error;
+             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: `Erro da API Gemini: ${e.message}` }}));
+             throw e;
         }
     }
-}
+};
 
 export const generateImagePromptForText = (title: string, content: string): Promise<string> => {
+     return handleApiCall(async () => {
+         const response = await ai.models.generateContent({
+             model: 'gemini-2.5-flash',
+             contents: `Crie um prompt curto e visual para gerar uma imagem para um texto com o título "${title}" e conteúdo "${content.substring(0, 300)}...". O prompt deve ser em inglês, focado em arte digital, cinematográfico e com cores vibrantes. Ex: 'digital art of a futuristic city at sunset, cinematic lighting, vibrant colors'.`,
+             config: {
+                 systemInstruction: "Você é um especialista em criar prompts para IAs de geração de imagem.",
+             }
+         });
+         return response.text.trim();
+     }, getMockImagePrompt);
+};
+
+export const generateImage = (prompt: string): Promise<string> => {
     return handleApiCall(async () => {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Crie um prompt curto e descritivo (em inglês) para um gerador de imagens IA. O prompt deve capturar a essência do seguinte texto, com o título "${title}". O conteúdo é: "${content.substring(0, 500)}...". O prompt deve ser visualmente inspirador e focar em conceitos chave. Estilo: digital art, cinematic, high detail.`,
-            config: {
-                systemInstruction: "Você é um especialista em engenharia de prompts para modelos de geração de imagem. Sua tarefa é converter um trecho de texto em um prompt de imagem eficaz em inglês."
-            }
-        });
-        return response.text;
-    }, getMockImagePrompt);
+         const response = await ai.models.generateImages({
+             model: 'imagen-4.0-generate-001',
+             prompt: prompt,
+             config: {
+                 numberOfImages: 1,
+                 outputMimeType: 'image/png',
+             }
+         });
+         return response.generatedImages[0].image.imageBytes;
+    }, getMockImageBase64);
 };
 
 export const generatePromptIdeas = (existingPrompt: string): Promise<string[]> => {
     return handleApiCall(async () => {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Dado o prompt de imagem IA: "${existingPrompt}", gere 3 variações ou alternativas criativas (em inglês). Retorne apenas as 3 sugestões, cada uma em uma nova linha, sem numeração ou marcadores.`,
+            contents: `Baseado no prompt de imagem "${existingPrompt}", gere 3 variações ou melhorias alternativas. As respostas devem ser apenas os prompts, em uma lista.`,
             config: {
+                systemInstruction: "Você é um assistente de IA que ajuda a refinar prompts de geração de imagem.",
                 responseMimeType: "application/json",
                 responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        ideas: {
-                            type: Type.ARRAY,
-                            items: { type: Type.STRING }
-                        }
-                    }
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
                 }
             }
         });
-        const result = JSON.parse(response.text.trim());
-        return result.ideas || [];
+        return JSON.parse(response.text);
     }, getMockPromptIdeas);
 }
 
-export const generateImage = (prompt: string): Promise<string> => {
-    return handleApiCall(async () => {
-        const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt,
-            config: {
-                numberOfImages: 1,
-                outputMimeType: 'image/png'
-            }
-        });
-        return response.generatedImages[0].image.imageBytes;
-    }, getMockImageBase64);
-};
-
-// --- Interactive & Video Content ---
-
 export const generateEbookQuiz = (project: Project): Promise<QuizQuestion[]> => {
     return handleApiCall(async () => {
-        const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\n${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}\nConclusão: ${project.conclusion}`;
+        const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => c.content).join('\n')}`;
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Baseado no conteúdo do ebook a seguir, crie um quiz de ${Math.min(5, project.chapters.length)} perguntas de múltipla escolha para testar o conhecimento do leitor. Cada pergunta deve ter 4 opções e apenas uma correta.\n\nEBOOK:\n${content.substring(0, 8000)}`,
+            contents: `Crie um quiz com ${Math.min(5, project.chapters.length)} perguntas de múltipla escolha (4 opções) baseado no conteúdo do ebook a seguir. Apenas uma resposta pode ser correta. O quiz deve testar o conhecimento chave do ebook. \n\nEBOOK:\n${content.substring(0, 8000)}`,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: quizSchema
+                responseSchema: quizSchema,
             }
         });
-        return JSON.parse(response.text.trim());
+        return JSON.parse(response.text);
     }, getMockEbookQuiz);
 };
 
 export const generateVideoScript = (project: Project): Promise<VideoScript> => {
-    return handleApiCall(async () => {
-        const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\n${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}\nConclusão: ${project.conclusion}`;
+     return handleApiCall(async () => {
+        const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}`;
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Crie um roteiro para um vídeo curto (1-2 minutos) baseado no conteúdo do ebook a seguir. Divida o roteiro em ${Math.min(4, project.chapters.length)} cenas. Para cada cena, forneça uma narração curta e um prompt visual (em inglês) para gerar um clipe de vídeo que a represente. Combine todas as narrações em um único script de narração completo.\n\nEBOOK:\n${content.substring(0, 8000)}`,
+            contents: `Crie um roteiro para um vídeo curto (aproximadamente 1 minuto) baseado no conteúdo do ebook a seguir. Divida o roteiro em 3 a 5 cenas. Para cada cena, forneça um texto de narração conciso e um prompt de imagem (em inglês) para gerar uma cena de vídeo visualmente atraente. No final, forneça o roteiro de narração completo. \n\nEBOOK:\n${content.substring(0, 8000)}`,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: videoScriptSchema
+                responseSchema: videoScriptSchema,
             }
         });
-        return JSON.parse(response.text.trim());
+        return JSON.parse(response.text);
     }, getMockVideoScript);
 };
 
-export const generateVideo = (prompt: string): Promise<any> => {
+export const generateVideo = (prompt: string) => {
     return handleApiCall(async () => {
-        return await ai.models.generateVideos({
+        const operation = await ai.models.generateVideos({
             model: 'veo-2.0-generate-001',
             prompt: prompt,
-            config: { numberOfVideos: 1 }
+            config: {
+                numberOfVideos: 1,
+            }
         });
+        return operation;
     }, getMockVideoOperation);
 };
 
-export const checkVideoOperationStatus = (operation: any): Promise<any> => {
-     return handleApiCall(async () => {
-        return await ai.operations.getVideosOperation({ operation });
-    }, () => Promise.resolve({ done: true, response: operation.response })); // In mock, just return done
-};
-
-// --- Search Functions ---
-
-export const searchYouTubeMusic = (query: string): Promise<YouTubeTrack[]> => {
-    return handleApiCall(async () => {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `O usuário quer buscar por "${query}" no YouTube Music. Gere uma lista de 5 resultados de vídeo de música prováveis, incluindo um ID de vídeo do YouTube (formato de 11 caracteres), título, artista e URL da thumbnail (use URLs do i.ytimg.com).`,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            id: { type: Type.STRING },
-                            title: { type: Type.STRING },
-                            artist: { type: Type.STRING },
-                            thumbnailUrl: { type: Type.STRING }
-                        },
-                        required: ['id', 'title', 'artist', 'thumbnailUrl']
-                    }
-                }
-            }
-        });
-        return JSON.parse(response.text.trim());
-    }, getMockYouTubeMusic);
-};
-
-
-// This function is overhauled to be more reliable and produce higher quality results.
-export const findMoreVideos = (categoryTitle: string, existingVideos: Video[]): Promise<Video[]> => {
-    return handleApiCall(async () => {
-        // Use IDs for exclusion, it's more reliable than titles.
-        const existingIds = existingVideos.map(v => v.id);
-        const existingIdsString = existingIds.length > 0 ? existingIds.join(', ') : 'Nenhum';
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Encontre 7 vídeos REAIS e PÚBLICOS do YouTube sobre "${categoryTitle}".
-            Requisitos Estritos:
-            1. **Conteúdo**: O vídeo DEVE ser em Português do Brasil e relevante ao tópico.
-            2. **Validade**: O vídeo DEVE existir e ser público. NÃO invente vídeos ou IDs.
-            3. **ID do Vídeo**: O ID DEVE ser o ID real de 11 caracteres do YouTube (padrão: /^[a-zA-Z0-9_-]{11}$/).
-            4. **Thumbnail**: A URL da thumbnail DEVE ser uma imagem VÁLIDA e REAL do vídeo, vinda do domínio i.ytimg.com. Não use placeholders.
-            5. **Exclusão**: NÃO inclua os seguintes IDs de vídeo na resposta: ${existingIdsString}.`,
-            config: {
-                 responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            id: { type: Type.STRING, description: "O ID real de 11 caracteres do vídeo do YouTube." },
-                            title: { type: Type.STRING, description: "O título completo e exato do vídeo." },
-                            duration: { type: Type.STRING, description: "A duração do vídeo no formato 'MM:SS'." },
-                            thumbnailUrl: { type: Type.STRING, description: "A URL completa e válida da thumbnail, começando com https://i.ytimg.com/." }
-                        },
-                        required: ['id', 'title', 'duration', 'thumbnailUrl']
-                    }
-                }
-            }
-        });
-        const results = JSON.parse(response.text.trim());
-
-        // Stricter client-side validation to ensure no "ghost" videos get through.
-        const validatedResults = results.filter((v: any) => {
-            const isValidId = v.id && typeof v.id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(v.id);
-            const hasTitle = v.title && typeof v.title === 'string' && v.title.trim() !== '';
-            const hasValidThumbnail = v.thumbnailUrl && typeof v.thumbnailUrl === 'string' && v.thumbnailUrl.startsWith('https://i.ytimg.com/');
-            
-            // Final check to prevent duplicates that might have slipped through the AI prompt
-            const isDuplicate = existingIds.includes(v.id);
-
-            return isValidId && hasTitle && hasValidThumbnail && !isDuplicate;
-        });
-
-        // Add the platform property to the validated results.
-        return validatedResults.map((v: any) => ({ ...v, platform: 'youtube' as const }));
-    }, getMockFindMoreVideos);
-};
-
-
-export const findTikTokVideos = (categoryTitle: string): Promise<Video[]> => {
-    return handleApiCall(async () => {
-        // Since we can't browse TikTok, we'll generate plausible-looking data
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Gere 3 ideias de vídeos populares do TikTok sobre "${categoryTitle}". Para cada um, forneça um ID de vídeo falso (um número longo), um título cativante, duração (ex: "0:45") e uma URL de thumbnail de placeholder (use placehold.co).`,
-             config: {
-                 responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            id: { type: Type.STRING },
-                            title: { type: Type.STRING },
-                            duration: { type: Type.STRING },
-                            thumbnailUrl: { type: Type.STRING }
-                        },
-                        required: ['id', 'title', 'duration', 'thumbnailUrl']
-                    }
-                }
-            }
-        });
-        const results = JSON.parse(response.text.trim());
-        return results.map((v: any) => ({ ...v, platform: 'tiktok' }));
-    }, getMockTikTokVideos);
-};
-
-export const findInstagramVideos = (categoryTitle: string): Promise<Video[]> => {
-    return handleApiCall(async () => {
-         // Since we can't browse Instagram, we'll generate plausible-looking data
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Gere 3 ideias de Reels populares do Instagram sobre "${categoryTitle}". Para cada um, forneça um "shortcode" falso (ex: CqXyZ-1aBcD), um título cativante, duração (ex: "0:59") e uma URL de thumbnail de placeholder (use placehold.co).`,
-             config: {
-                 responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            id: { type: Type.STRING }, // This will be the shortcode
-                            title: { type: Type.STRING },
-                            duration: { type: Type.STRING },
-                            thumbnailUrl: { type: Type.STRING }
-                        },
-                        required: ['id', 'title', 'duration', 'thumbnailUrl']
-                    }
-                }
-            }
-        });
-        const results = JSON.parse(response.text.trim());
-        return results.map((v: any) => ({ ...v, platform: 'instagram' }));
-    }, getMockInstagramVideos);
+export const checkVideoOperationStatus = (operation: any) => {
+    return handleApiCall(
+        () => ai.operations.getVideosOperation({ operation: operation }),
+        () => operation // In mock, assume it's done instantly
+    );
 };

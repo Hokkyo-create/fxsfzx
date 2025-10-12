@@ -18,15 +18,15 @@ export const getMockMeetingChatResponse = (): string => {
 };
 
 export const getMockFindMoreVideos = (): Video[] => {
-    return [];
-};
-
-export const getMockTikTokVideos = (): Video[] => {
-    return [];
-};
-
-export const getMockInstagramVideos = (): Video[] => {
-    return [];
+    return [
+        {
+            id: 'dQw4w9WgXcQ',
+            title: 'Vídeo de Simulação (Cota da API Excedida)',
+            duration: '3:32',
+            thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+            platform: 'youtube',
+        }
+    ];
 };
 
 export const getMockChatbotResponse = (isError: boolean = false): string => {

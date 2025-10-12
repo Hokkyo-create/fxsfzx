@@ -204,9 +204,7 @@ const App: React.FC = () => {
                 setLearningCategories(currentCategories => 
                     currentCategories.map(cat => ({
                         ...cat,
-                        videos: videosByCategory[cat.id]?.filter(v => v.platform === 'youtube') || [],
-                        tiktokVideos: videosByCategory[cat.id]?.filter(v => v.platform === 'tiktok') || [],
-                        instagramVideos: videosByCategory[cat.id]?.filter(v => v.platform === 'instagram') || [],
+                        videos: videosByCategory[cat.id] || [],
                     }))
                 );
             }
@@ -318,9 +316,9 @@ const App: React.FC = () => {
         });
     };
     
-    const handleAddVideosToCategory = useCallback(async (categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => {
+    const handleAddVideosToCategory = useCallback(async (categoryId: string, newVideos: Video[]) => {
         try {
-            await addVideos(categoryId, platform, newVideos);
+            await addVideos(categoryId, 'youtube', newVideos);
             // The real-time listener will handle the UI update.
         } catch (error) {
             const errorMessage = formatSupabaseError(error as PostgrestError, 'salvar vídeos');

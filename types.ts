@@ -1,5 +1,3 @@
-// types.ts
-
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
@@ -17,11 +15,11 @@ export interface OnlineUser {
 }
 
 export interface Video {
-  id: string; // youtube video ID, tiktok video id, or instagram shortcode
+  id: string; // youtube video ID
   title: string;
   duration: string; // e.g. "10:32"
   thumbnailUrl: string;
-  platform: 'youtube' | 'tiktok' | 'instagram';
+  platform: 'youtube';
 }
 
 export interface LearningCategory {
@@ -31,8 +29,6 @@ export interface LearningCategory {
   icon: IconName;
   color: 'red' | 'orange' | 'green' | 'cyan' | 'blue' | 'indigo' | 'yellow' | 'rose';
   videos: Video[];
-  tiktokVideos?: Video[];
-  instagramVideos?: Video[];
 }
 
 export interface NextVideoInfo {

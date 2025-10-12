@@ -5,19 +5,16 @@ import type { LearningCategory, Video } from '../types';
 import Icon from './Icons';
 import VideoCard from './VideoCard';
 import SocialMediaModal from './SocialMediaModal';
-import { findMoreVideos, findTikTokVideos, findInstagramVideos } from '../services/geminiService';
-import SocialEmbed from './SocialEmbed';
+import { findMoreVideos } from '../services/geminiService';
 
 interface VideoPlayerPageProps {
     category: LearningCategory;
     watchedVideos: Set<string>;
     onToggleVideoWatched: (videoId: string) => void;
-    onAddVideos: (categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => void;
+    onAddVideos: (categoryId: string, newVideos: Video[]) => void;
     onBack: () => void;
     initialVideoId: string | null;
 }
-
-type PlatformTab = 'youtube' | 'tiktok' | 'instagram';
 
 const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     category,
@@ -27,7 +24,6 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     onBack,
     initialVideoId,
 }) => {
-    const [activeTab, setActiveTab] = useState<PlatformTab>('youtube');
     const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isLoadingNewVideos, setIsLoadingNewVideos] = useState(false);
@@ -36,47 +32,20 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     const playlistRef = useRef<HTMLDivElement>(null);
     const isLoadingRef = useRef(false);
 
-    const videosForTab = useMemo(() => {
-        switch (activeTab) {
-            case 'youtube':
-                return category.videos;
-            case 'tiktok':
-                return category.tiktokVideos || [];
-            case 'instagram':
-                return category.instagramVideos || [];
-            default:
-                return [];
-        }
-    }, [activeTab, category]);
-
     useEffect(() => {
         // On mount, set the initial video
         if (initialVideoId) {
             const video = category.videos.find(v => v.id === initialVideoId);
             if (video) {
                 setCurrentVideo(video);
-                setActiveTab('youtube');
                 return;
             }
         }
-        // Fallback to the first video of the default tab
+        // Fallback to the first video
         if (category.videos.length > 0) {
             setCurrentVideo(category.videos[0]);
-        } else if (category.tiktokVideos && category.tiktokVideos.length > 0) {
-            setCurrentVideo(category.tiktokVideos[0]);
-            setActiveTab('tiktok');
-        } else if (category.instagramVideos && category.instagramVideos.length > 0) {
-            setCurrentVideo(category.instagramVideos[0]);
-            setActiveTab('instagram');
         }
     }, [category, initialVideoId]);
-    
-    useEffect(() => {
-        // When tab changes, select the first video of that tab if one isn't already selected for that platform
-         if (!currentVideo || currentVideo.platform !== activeTab) {
-            setCurrentVideo(videosForTab[0] || null);
-        }
-    }, [activeTab, videosForTab, currentVideo]);
 
     const handleSelectVideo = (video: Video) => {
         setCurrentVideo(video);
@@ -91,16 +60,10 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
         setIsLoadingNewVideos(true);
         
         try {
-            let newVideos: Video[] = [];
-            const existingVideosForTab = videosForTab || [];
-            
-            // Currently only YouTube supports AI-powered infinite scroll
-            if (activeTab === 'youtube') {
-                newVideos = await findMoreVideos(category.title, existingVideosForTab);
-            }
+            const newVideos = await findMoreVideos(category.title, category.videos || []);
             
             if (newVideos.length > 0) {
-                onAddVideos(category.id, newVideos, activeTab);
+                onAddVideos(category.id, newVideos);
                 window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: `${newVideos.length} novos vídeos adicionados!` }}));
             } else {
                 window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Nenhum vídeo novo encontrado pela IA.' }}));
@@ -113,7 +76,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
             isLoadingRef.current = false;
             setIsLoadingNewVideos(false);
         }
-    }, [activeTab, category.title, videosForTab, category.id, onAddVideos]);
+    }, [category.title, category.videos, category.id, onAddVideos]);
     
     // Effect to handle the infinite scroll logic
     useEffect(() => {
@@ -137,11 +100,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     }, [fetchMoreVideos]);
 
     const isCurrentVideoWatched = currentVideo ? watchedVideos.has(currentVideo.id) : false;
-    const currentVideoUrl = currentVideo ? (
-        currentVideo.platform === 'youtube' ? `https://www.youtube.com/watch?v=${currentVideo.id}` :
-        currentVideo.platform === 'tiktok' ? `https://www.tiktok.com/oembed?url=https://www.tiktok.com/@fakeuser/video/${currentVideo.id}` : // Placeholder
-        `https://www.instagram.com/p/${currentVideo.id}/`
-    ) : '';
+    const currentVideoUrl = currentVideo ? `https://www.youtube.com/watch?v=${currentVideo.id}` : '';
 
     const PlayerContent = () => {
         if (!currentVideo) {
@@ -153,30 +112,16 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
             )
         }
         
-        if (currentVideo.platform === 'youtube') {
-            return (
-                <YouTube 
-                    videoId={currentVideo.id}
-                    opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, modestbranding: 1, rel: 0 } }}
-                    className="w-full h-full"
-                    onEnd={() => onToggleVideoWatched(currentVideo.id)}
-                />
-            )
-        }
-
-        return <SocialEmbed video={currentVideo} platform={currentVideo.platform} />;
+        return (
+            <YouTube 
+                videoId={currentVideo.id}
+                opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, modestbranding: 1, rel: 0 } }}
+                className="w-full h-full"
+                onEnd={() => onToggleVideoWatched(currentVideo.id)}
+            />
+        )
     };
     
-    const TabButton: React.FC<{tab: PlatformTab, icon: React.ComponentProps<typeof Icon>['name'], label: string}> = ({ tab, icon, label }) => (
-        <button
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === tab ? 'text-brand-red border-brand-red' : 'text-gray-400 border-transparent hover:text-white'}`}
-        >
-            <Icon name={icon} className="w-5 h-5" />
-            {label}
-        </button>
-    );
-
     return (
         <>
             <div className="min-h-screen bg-darker text-white font-sans flex flex-col">
@@ -226,14 +171,12 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
 
                     {/* Sidebar: Playlist */}
                     <aside className="w-full lg:w-1/3 lg:max-w-sm flex-shrink-0 bg-dark border border-gray-800 rounded-lg flex flex-col h-full max-h-[calc(100vh-150px)]">
-                        <div className="flex-shrink-0 border-b border-gray-800 flex">
-                            <TabButton tab="youtube" icon="Play" label="YouTube" />
-                            <TabButton tab="tiktok" icon="Film" label="TikTok" />
-                            <TabButton tab="instagram" icon="Sparkles" label="Instagram" />
+                        <div className="flex-shrink-0 border-b border-gray-800 flex p-3">
+                           <h3 className="font-display tracking-wider text-white text-lg">Próximos Vídeos</h3>
                         </div>
                          <div ref={playlistRef} className="flex-grow overflow-y-auto p-2 space-y-2">
-                             {videosForTab.length > 0 ? (
-                                videosForTab.map(video => (
+                             {category.videos.length > 0 ? (
+                                category.videos.map(video => (
                                     <VideoCard 
                                         key={video.id}
                                         video={video}

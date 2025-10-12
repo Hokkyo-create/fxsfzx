@@ -103,23 +103,63 @@ export const setupVideosListener = (callback: (videos: Record<string, Video[]>, 
         const { data, error } = await supabase.from('learning_videos').select('*');
         if (error) {
             callback({}, error);
-        } else {
-            const videosByCategory = (data as any[]).reduce((acc, video) => {
-                const mappedVideo: Video = {
-                    id: video.id,
-                    title: video.title,
-                    duration: video.duration,
-                    thumbnailUrl: video.thumbnail_url,
-                    platform: video.platform,
-                };
-                if (!acc[video.category_id]) {
-                    acc[video.category_id] = [];
-                }
-                acc[video.category_id].push(mappedVideo);
-                return acc;
-            }, {} as Record<string, Video[]>);
-            callback(videosByCategory, null);
+            return;
         }
+
+        // --- Self-Healing: Verify videos exist and clean up any that don't ---
+        const invalidVideoIds: string[] = [];
+        const verificationPromises = (data as any[]).map(async (video): Promise<any | null> => {
+            // Only verify YouTube videos for now, as other platforms don't have a public verification endpoint
+            if (video.platform !== 'youtube') return video;
+
+            try {
+                // Use YouTube's public oEmbed endpoint. It returns 404 for non-existent/private videos.
+                const oEmbedResponse = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${video.id}&format=json`);
+                if (!oEmbedResponse.ok) {
+                    invalidVideoIds.push(video.id);
+                    return null; // Mark as invalid
+                }
+                return video; // Video is valid
+            } catch (e) {
+                console.warn(`Network error verifying video ID ${video.id} from database. Assuming invalid.`, e);
+                invalidVideoIds.push(video.id);
+                return null; // Mark as invalid on network error
+            }
+        });
+
+        const settledResults = await Promise.all(verificationPromises);
+        const validVideos = settledResults.filter(v => v !== null);
+
+        if (invalidVideoIds.length > 0) {
+            console.log(`[Self-Healing] Found ${invalidVideoIds.length} invalid videos in the database. Removing them...`, invalidVideoIds);
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: `Removendo ${invalidVideoIds.length} vídeos inválidos da sua lista.` }}));
+            
+            const { error: deleteError } = await supabase
+                .from('learning_videos')
+                .delete()
+                .in('id', invalidVideoIds);
+
+            if (deleteError) {
+                console.error("Failed to self-heal and delete invalid videos:", deleteError);
+            }
+        }
+        // --- End of Self-Healing Logic ---
+
+        const videosByCategory = (validVideos as any[]).reduce((acc, video) => {
+            const mappedVideo: Video = {
+                id: video.id,
+                title: video.title,
+                duration: video.duration,
+                thumbnailUrl: video.thumbnail_url,
+                platform: video.platform,
+            };
+            if (!acc[video.category_id]) {
+                acc[video.category_id] = [];
+            }
+            acc[video.category_id].push(mappedVideo);
+            return acc;
+        }, {} as Record<string, Video[]>);
+        callback(videosByCategory, null);
     };
     
     handleVideoUpdates();
