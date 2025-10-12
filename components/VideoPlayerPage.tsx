@@ -1,5 +1,5 @@
 // components/VideoPlayerPage.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import YouTube from 'react-youtube';
 import type { LearningCategory, Video } from '../types';
 import Icon from './Icons';
@@ -31,6 +31,10 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isLoadingNewVideos, setIsLoadingNewVideos] = useState(false);
+    
+    // Refs for managing scroll and loading state to avoid stale closures in event handlers
+    const playlistRef = useRef<HTMLDivElement>(null);
+    const isLoadingRef = useRef(false);
 
     const videosForTab = useMemo(() => {
         switch (activeTab) {
@@ -77,32 +81,61 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     const handleSelectVideo = (video: Video) => {
         setCurrentVideo(video);
     };
-
-    const handleFindMore = async () => {
+    
+    // This function fetches new videos using the AI service.
+    const fetchMoreVideos = useCallback(async () => {
+        // Prevent multiple simultaneous fetches
+        if (isLoadingRef.current) return;
+        
+        isLoadingRef.current = true;
         setIsLoadingNewVideos(true);
+        
         try {
             let newVideos: Video[] = [];
+            const existingVideosForTab = videosForTab || [];
+            
+            // Currently only YouTube supports AI-powered infinite scroll
             if (activeTab === 'youtube') {
-                newVideos = await findMoreVideos(category.title, category.videos);
-            } else if (activeTab === 'tiktok') {
-                newVideos = await findTikTokVideos(category.title);
-            } else if (activeTab === 'instagram') {
-                newVideos = await findInstagramVideos(category.title);
+                newVideos = await findMoreVideos(category.title, existingVideosForTab);
             }
+            
             if (newVideos.length > 0) {
                 onAddVideos(category.id, newVideos, activeTab);
-                 window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: `${newVideos.length} novos vídeos adicionados!` }}));
+                window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: `${newVideos.length} novos vídeos adicionados!` }}));
             } else {
-                 window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Nenhum vídeo novo encontrado pela IA.' }}));
+                window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Nenhum vídeo novo encontrado pela IA.' }}));
             }
         } catch (error) {
             console.error("Failed to find more videos:", error);
-             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Falha ao buscar novos vídeos.' }}));
+            const errorMessage = error instanceof Error ? error.message : 'Falha ao buscar novos vídeos.';
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: errorMessage }}));
         } finally {
+            isLoadingRef.current = false;
             setIsLoadingNewVideos(false);
         }
-    };
+    }, [activeTab, category.title, videosForTab, category.id, onAddVideos]);
     
+    // Effect to handle the infinite scroll logic
+    useEffect(() => {
+        const target = playlistRef.current;
+
+        const handleScroll = () => {
+            if (target) {
+                const isNearBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 200; // 200px threshold
+                if (isNearBottom && !isLoadingRef.current) {
+                    fetchMoreVideos();
+                }
+            }
+        };
+
+        if (target) {
+            target.addEventListener('scroll', handleScroll);
+            return () => {
+                target.removeEventListener('scroll', handleScroll);
+            };
+        }
+    }, [fetchMoreVideos]);
+
     const isCurrentVideoWatched = currentVideo ? watchedVideos.has(currentVideo.id) : false;
     const currentVideoUrl = currentVideo ? (
         currentVideo.platform === 'youtube' ? `https://www.youtube.com/watch?v=${currentVideo.id}` :
@@ -198,7 +231,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                             <TabButton tab="tiktok" icon="Film" label="TikTok" />
                             <TabButton tab="instagram" icon="Sparkles" label="Instagram" />
                         </div>
-                         <div className="flex-grow overflow-y-auto p-2 space-y-2">
+                         <div ref={playlistRef} className="flex-grow overflow-y-auto p-2 space-y-2">
                              {videosForTab.length > 0 ? (
                                 videosForTab.map(video => (
                                     <VideoCard 
@@ -214,20 +247,12 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                                     <p>Nenhum vídeo nesta categoria ainda.</p>
                                 </div>
                              )}
-                         </div>
-                         <div className="flex-shrink-0 p-3 border-t border-gray-800">
-                             <button
-                                 onClick={handleFindMore}
-                                 disabled={isLoadingNewVideos}
-                                 className="w-full flex items-center justify-center gap-2 bg-brand-red/20 text-brand-red font-semibold py-2 rounded-md hover:bg-brand-red/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                             >
-                                 {isLoadingNewVideos ? (
-                                     <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                 ) : (
-                                     <Icon name="Brain" className="w-5 h-5" />
-                                 )}
-                                 <span>Encontrar mais com IA</span>
-                             </button>
+                            {isLoadingNewVideos && (
+                                <div className="flex justify-center items-center p-4">
+                                    <svg className="animate-spin h-6 w-6 text-brand-red" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    <span className="ml-2 text-gray-400">Buscando mais vídeos...</span>
+                                </div>
+                            )}
                          </div>
                     </aside>
                 </div>

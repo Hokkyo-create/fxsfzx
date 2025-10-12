@@ -296,12 +296,22 @@ export const searchYouTubeMusic = (query: string): Promise<YouTubeTrack[]> => {
 };
 
 
+// This function is overhauled to be more reliable and produce higher quality results.
 export const findMoreVideos = (categoryTitle: string, existingVideos: Video[]): Promise<Video[]> => {
     return handleApiCall(async () => {
-        const existingTitles = existingVideos.map(v => v.title).join(', ');
+        // Use IDs for exclusion, it's more reliable than titles.
+        const existingIds = existingVideos.map(v => v.id);
+        const existingIdsString = existingIds.length > 0 ? existingIds.join(', ') : 'Nenhum';
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Encontre 3 vídeos populares do YouTube sobre "${categoryTitle}". Não inclua os seguintes vídeos: ${existingTitles}. Para cada vídeo, forneça o ID do vídeo, título, duração aproximada (ex: "12:34") e a URL da thumbnail (use i.ytimg.com).`,
+            contents: `Encontre 7 vídeos REAIS e PÚBLICOS do YouTube sobre "${categoryTitle}".
+            Requisitos Estritos:
+            1. **Conteúdo**: O vídeo DEVE ser em Português do Brasil e relevante ao tópico.
+            2. **Validade**: O vídeo DEVE existir e ser público. NÃO invente vídeos ou IDs.
+            3. **ID do Vídeo**: O ID DEVE ser o ID real de 11 caracteres do YouTube (padrão: /^[a-zA-Z0-9_-]{11}$/).
+            4. **Thumbnail**: A URL da thumbnail DEVE ser uma imagem VÁLIDA e REAL do vídeo, vinda do domínio i.ytimg.com. Não use placeholders.
+            5. **Exclusão**: NÃO inclua os seguintes IDs de vídeo na resposta: ${existingIdsString}.`,
             config: {
                  responseMimeType: 'application/json',
                 responseSchema: {
@@ -309,10 +319,10 @@ export const findMoreVideos = (categoryTitle: string, existingVideos: Video[]): 
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            id: { type: Type.STRING },
-                            title: { type: Type.STRING },
-                            duration: { type: Type.STRING },
-                            thumbnailUrl: { type: Type.STRING }
+                            id: { type: Type.STRING, description: "O ID real de 11 caracteres do vídeo do YouTube." },
+                            title: { type: Type.STRING, description: "O título completo e exato do vídeo." },
+                            duration: { type: Type.STRING, description: "A duração do vídeo no formato 'MM:SS'." },
+                            thumbnailUrl: { type: Type.STRING, description: "A URL completa e válida da thumbnail, começando com https://i.ytimg.com/." }
                         },
                         required: ['id', 'title', 'duration', 'thumbnailUrl']
                     }
@@ -320,8 +330,21 @@ export const findMoreVideos = (categoryTitle: string, existingVideos: Video[]): 
             }
         });
         const results = JSON.parse(response.text.trim());
-        // Add the platform property
-        return results.map((v: any) => ({ ...v, platform: 'youtube' }));
+
+        // Stricter client-side validation to ensure no "ghost" videos get through.
+        const validatedResults = results.filter((v: any) => {
+            const isValidId = v.id && typeof v.id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(v.id);
+            const hasTitle = v.title && typeof v.title === 'string' && v.title.trim() !== '';
+            const hasValidThumbnail = v.thumbnailUrl && typeof v.thumbnailUrl === 'string' && v.thumbnailUrl.startsWith('https://i.ytimg.com/');
+            
+            // Final check to prevent duplicates that might have slipped through the AI prompt
+            const isDuplicate = existingIds.includes(v.id);
+
+            return isValidId && hasTitle && hasValidThumbnail && !isDuplicate;
+        });
+
+        // Add the platform property to the validated results.
+        return validatedResults.map((v: any) => ({ ...v, platform: 'youtube' as const }));
     }, getMockFindMoreVideos);
 };
 
