@@ -3,7 +3,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search' | 'Film' | 'Sparkles';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search' | 'Film' | 'Sparkles' | 'Info';
 
 export interface User {
   name: string;
@@ -107,4 +107,9 @@ export interface YouTubeTrack {
   title: string;
   artist: string;
   thumbnailUrl: string;
+}
+
+export interface Notification {
+    type: 'error' | 'info';
+    message: string;
 }

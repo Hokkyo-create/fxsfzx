@@ -7,7 +7,7 @@ import EditImageModal from './EditImageModal';
 import VideoGenerationModal from './VideoGenerationModal';
 import InteractiveEbookModal from './InteractiveEbookModal';
 import { generateImagePromptForText, generateImage } from '../services/geminiService';
-import { updateProject } from '../services/firebaseService';
+import { updateProject } from '../services/supabaseService';
 
 interface ProjectViewerPageProps {
     project: Project;

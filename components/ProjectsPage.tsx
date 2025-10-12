@@ -3,8 +3,7 @@ import type { User, Project, ProjectGenerationConfig } from '../types';
 import Icon from './Icons';
 import ProjectCard from './ProjectCard';
 import CreateProjectModal from './CreateProjectModal';
-import { setupProjectsListener } from '../services/firebaseService';
-
+import { setupProjectsListener, formatSupabaseError } from '../services/supabaseService';
 
 interface ProjectsPageProps {
     user: User;
@@ -13,12 +12,32 @@ interface ProjectsPageProps {
     onStartGeneration: (config: ProjectGenerationConfig) => void;
 }
 
+const ErrorMessage: React.FC<{title: string, message: string, context: string}> = ({ title, message, context }) => (
+    <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 p-8 bg-dark/50 border-2 border-dashed border-red-500/30 rounded-lg animate-fade-in">
+        <Icon name="Fire" className="w-16 h-16 text-red-500/70 mb-4" />
+        <h2 className="text-2xl font-display text-white mb-2">{title}</h2>
+        <p className="max-w-md text-red-300/80">{message}</p>
+         <p className="mt-4 text-xs text-gray-600 font-mono bg-gray-900/50 px-2 py-1 rounded">
+            Context: {context}
+         </p>
+    </div>
+);
+
 const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, onBack, onSelectProject, onStartGeneration }) => {
     const [projects, setProjects] = useState<Project[]>([]);
+    const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
-        const unsubscribe = setupProjectsListener(setProjects);
+        const unsubscribe = setupProjectsListener((projectsData, err) => {
+            if (err) {
+                setError(formatSupabaseError(err, 'projetos'));
+                setProjects([]);
+            } else {
+                setProjects(projectsData);
+                setError(null);
+            }
+        });
         return () => unsubscribe();
     }, []);
     
@@ -52,7 +71,13 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, onBack, onSelectProje
             </header>
             
             <main className="container mx-auto px-4 sm:px-6 py-8 flex-grow">
-                 {projects.length > 0 ? (
+                 {error ? (
+                     <ErrorMessage 
+                        title="Erro ao Carregar Projetos" 
+                        message={error}
+                        context="Projects Fetch"
+                    />
+                 ) : projects.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                         {projects.map((project, index) => (
                            <ProjectCard 

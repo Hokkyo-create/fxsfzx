@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { User, Project, Chapter, ProjectGenerationConfig } from '../types';
 import Icon from './Icons';
 import { generateEbookProjectStream, generateImagePromptForText, generateImage } from '../services/geminiService';
-import { createProject } from '../services/firebaseService';
+import { createProject } from '../services/supabaseService';
 import { downloadProjectAsPdf } from '../utils/pdfGenerator';
 import EditImageModal from './EditImageModal';
 import VideoGenerationModal from './VideoGenerationModal';
@@ -153,7 +153,7 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ config, u
             onFinish();
         } catch(e) {
             setError("Falha ao salvar o projeto no banco de dados. Tente novamente.");
-            console.error("Firebase save error:", e);
+            console.error("Supabase save error:", e);
             setIsSaving(false);
         }
     };

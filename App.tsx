@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { users, categories as initialCategories } from './data';
-import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Song } from './types';
+import type { LearningCategory, User, Video, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Song, Notification } from './types';
 import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
@@ -13,17 +13,18 @@ import Chatbot from './components/Chatbot';
 import AdminPanel from './components/AdminPanel';
 import ProfileModal from './components/ProfileModal';
 import MusicPlayer from './components/MusicPlayer';
-import { getMeetingChatResponse, enableSimulationMode as enableGeminiSimulationMode } from './services/geminiService';
+import NotificationBanner from './components/NotificationBanner';
+import { getMeetingChatResponse, enableSimulationMode as enableGeminiSimulationMode, findVideos } from './services/geminiService';
 import {
     setupMessagesListener,
-    setupTypingListener,
-    setupOnlineStatusListener,
+    setupPresence,
     sendMessage,
     updateTypingStatus,
     updateUserPresence,
     goOffline,
-    setupPlaylistListener
-} from './services/firebaseService';
+    setupPlaylistListener,
+    formatSupabaseError
+} from './services/supabaseService';
 import Icon from './components/Icons';
 
 const App: React.FC = () => {
@@ -35,13 +36,17 @@ const App: React.FC = () => {
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     
+    const [notification, setNotification] = useState<Notification | null>(null);
     // PWA Install Prompt
     const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
     const [isSimulationMode, setIsSimulationMode] = useState(false);
+    const [loadingCategories, setLoadingCategories] = useState<Set<string>>(new Set());
+
 
     // Meeting state
     const [isMeetingOpen, setIsMeetingOpen] = useState(false);
     const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
+    const [meetingError, setMeetingError] = useState<string | null>(null);
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
     const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
     const [isMeetingAiActive, setIsMeetingAiActive] = useState(true);
@@ -53,6 +58,7 @@ const App: React.FC = () => {
 
     // Music Player state
     const [playlist, setPlaylist] = useState<Song[]>([]);
+    const [playlistError, setPlaylistError] = useState<string | null>(null);
 
 
     useEffect(() => {
@@ -70,6 +76,18 @@ const App: React.FC = () => {
             enableGeminiSimulationMode(); // Notify the service to use mocks for all subsequent calls
         };
         window.addEventListener('quotaExceeded', handleQuotaExceeded);
+
+        // Listener for global app notifications from services
+        const handleAppNotification = (e: Event) => {
+            const detail = (e as CustomEvent).detail as Notification;
+            setNotification(detail);
+            
+            // Auto-dismiss after 7 seconds
+            setTimeout(() => {
+                setNotification(current => (current?.message === detail.message ? null : current));
+            }, 7000);
+        };
+        window.addEventListener('app-notification', handleAppNotification);
 
 
         // Apply custom admin styles
@@ -106,41 +124,49 @@ const App: React.FC = () => {
         return () => {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
             window.removeEventListener('quotaExceeded', handleQuotaExceeded);
+            window.removeEventListener('app-notification', handleAppNotification);
         };
     }, []);
 
-    // Effect for Real-time Firebase Chat Sync
+    // Effect for Real-time Supabase Chat Sync
     useEffect(() => {
         if (!currentUser) return;
 
-        // Setup presence
-        updateUserPresence(currentUser.name, currentUser.avatarUrl);
-
         // Setup listeners
-        const unsubscribeMessages = setupMessagesListener((messages) => {
-            setMeetingMessages(messages);
+        const unsubscribeMessages = setupMessagesListener((messages, error) => {
+            if (error) {
+                setMeetingError(formatSupabaseError(error, 'mensagens do chat'));
+                setMeetingMessages([]);
+            } else {
+                setMeetingMessages(messages);
+                setMeetingError(null);
+            }
         });
 
-        const unsubscribeTyping = setupTypingListener((users) => {
-            setTypingUsers(new Set(users));
-        });
-
-        const unsubscribeOnline = setupOnlineStatusListener((onlineUsersData) => {
-            setOnlineUsers(onlineUsersData);
-        });
+        const unsubscribePresence = setupPresence(
+            currentUser,
+            (onlineUsersData) => setOnlineUsers(onlineUsersData),
+            (typingUsersData) => setTypingUsers(new Set(typingUsersData))
+        );
 
         // Cleanup on logout or component unmount
         return () => {
             unsubscribeMessages();
-            unsubscribeTyping();
-            unsubscribeOnline();
-            goOffline(currentUser.name);
+            unsubscribePresence();
         };
     }, [currentUser]);
 
-    // Effect for Firebase Playlist Sync
+    // Effect for Supabase Playlist Sync
     useEffect(() => {
-        const unsubscribe = setupPlaylistListener(setPlaylist);
+        const unsubscribe = setupPlaylistListener((playlistData, error) => {
+             if (error) {
+                setPlaylistError(formatSupabaseError(error, 'playlist de música'));
+                setPlaylist([]);
+            } else {
+                setPlaylist(playlistData);
+                setPlaylistError(null);
+            }
+        });
         return () => unsubscribe();
     }, []);
     
@@ -155,6 +181,82 @@ const App: React.FC = () => {
             localStorage.setItem('arc7hive_categories', JSON.stringify(learningCategories));
         } catch (error) { console.error("Failed to save categories", error); }
     }, [learningCategories]);
+
+    const handleAddVideosToCategory = useCallback((categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => {
+        setLearningCategories(prevCategories => {
+            const updatedCategories = prevCategories.map(cat => {
+                if (cat.id === categoryId) {
+                    let updatedCat = { ...cat };
+                    if (platform === 'youtube') {
+                        const existingVideoIds = new Set(cat.videos.map(v => v.id));
+                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                        updatedCat.videos = [...cat.videos, ...uniqueNewVideos];
+                    } else if (platform === 'tiktok') {
+                        const existingVideoIds = new Set((cat.tiktokVideos || []).map(v => v.id));
+                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                        updatedCat.tiktokVideos = [...(cat.tiktokVideos || []), ...uniqueNewVideos];
+                    } else if (platform === 'instagram') {
+                        const existingVideoIds = new Set((cat.instagramVideos || []).map(v => v.id));
+                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                        updatedCat.instagramVideos = [...(cat.instagramVideos || []), ...uniqueNewVideos];
+                    }
+                    return updatedCat;
+                }
+                return cat;
+            });
+
+            if (selectedCategory?.id === categoryId) {
+                const updatedCategory = updatedCategories.find(c => c.id === categoryId);
+                if (updatedCategory) setSelectedCategory(updatedCategory);
+            }
+            return updatedCategories;
+        });
+    }, [selectedCategory]);
+
+    // Effect to auto-populate empty categories with videos on login
+    useEffect(() => {
+        if (!currentUser) return;
+    
+        const populateEmptyCategories = async () => {
+            // Check session storage to run this only once per session
+            const populated = sessionStorage.getItem('arc7hive_populated_categories');
+            if (populated) return;
+    
+            // Use a functional update to get the latest categories without adding it to dependency array
+            setLearningCategories(currentCategories => {
+                const categoriesToUpdate = currentCategories.filter(cat => cat.videos.length === 0);
+                if (categoriesToUpdate.length === 0) {
+                    sessionStorage.setItem('arc7hive_populated_categories', 'true');
+                    return currentCategories; // No change needed
+                }
+                
+                setLoadingCategories(new Set(categoriesToUpdate.map(c => c.id)));
+                
+                const searchPromises = categoriesToUpdate.map(category =>
+                    findVideos(category.title, 'youtube')
+                        .then(newVideos => ({ categoryId: category.id, newVideos, success: true }))
+                        .catch(error => {
+                            console.error(`Falha ao buscar vídeos para ${category.title}:`, error);
+                            return { categoryId: category.id, newVideos: [], success: false };
+                        })
+                );
+    
+                Promise.all(searchPromises).then(results => {
+                    results.forEach(result => {
+                        if (result.success && result.newVideos.length > 0) {
+                            handleAddVideosToCategory(result.categoryId, result.newVideos, 'youtube');
+                        }
+                    });
+                    setLoadingCategories(new Set());
+                    sessionStorage.setItem('arc7hive_populated_categories', 'true');
+                });
+    
+                return currentCategories; // Return original while async operation is running
+            });
+        };
+    
+        populateEmptyCategories();
+    }, [currentUser, handleAddVideosToCategory]);
 
 
     const handleLogin = (user: User) => {
@@ -172,6 +274,7 @@ const App: React.FC = () => {
             goOffline(currentUser.name);
         }
         localStorage.removeItem('arc7hive_user');
+        sessionStorage.removeItem('arc7hive_populated_categories');
         setCurrentUser(null);
         setSelectedCategory(null);
         setWatchedVideos(new Set());
@@ -203,19 +306,23 @@ const App: React.FC = () => {
     const handleSendMessage = useCallback(async (text: string) => {
         if (!currentUser) return;
 
-        sendMessage(currentUser.name, text, currentUser.avatarUrl);
+        try {
+            await sendMessage(currentUser.name, text, currentUser.avatarUrl);
 
-        if (isMeetingAiActive && text.toLowerCase().startsWith('@arc7')) {
-             const aiPrompt = text.substring(5).trim();
-             const responseText = await getMeetingChatResponse(aiPrompt, [...meetingMessages]);
-             // The AI avatar is fixed
-             sendMessage('ARC7', responseText, 'https://placehold.co/100x100/71717A/FFFFFF?text=AI');
+            if (isMeetingAiActive && text.toLowerCase().startsWith('@arc7')) {
+                 const aiPrompt = text.substring(5).trim();
+                 const responseText = await getMeetingChatResponse(aiPrompt, [...meetingMessages]);
+                 // The AI avatar is fixed
+                 await sendMessage('ARC7', responseText, 'https://placehold.co/100x100/71717A/FFFFFF?text=AI');
+            }
+        } catch (error) {
+            setNotification({ type: 'error', message: `Falha ao enviar mensagem: ${error instanceof Error ? error.message : 'Erro desconhecido'}` });
         }
     }, [currentUser, isMeetingAiActive, meetingMessages]);
     
     const handleTypingChange = useCallback((isTyping: boolean) => {
         if (!currentUser) return;
-        updateTypingStatus(currentUser.name, isTyping);
+        updateTypingStatus(currentUser, isTyping);
     }, [currentUser]);
 
     const handleToggleAi = useCallback(() => {
@@ -228,13 +335,13 @@ const App: React.FC = () => {
     
     const handleBackToDashboard = () => setSelectedCategory(null);
 
-    const handleUpdateAvatar = (newAvatarUrl: string) => {
+    const handleUpdateAvatar = async (newAvatarUrl: string) => {
         if (!currentUser) return;
         const updatedUser = { ...currentUser, avatarUrl: newAvatarUrl };
         setCurrentUser(updatedUser);
         localStorage.setItem(`arc7hive_avatar_${currentUser.name}`, newAvatarUrl);
-        // Update presence in Firebase with new avatar
-        updateUserPresence(currentUser.name, newAvatarUrl);
+        // Update presence in Supabase with new avatar
+        await updateUserPresence(updatedUser);
     };
     
     const handleToggleVideoWatched = (videoId: string) => {
@@ -246,37 +353,6 @@ const App: React.FC = () => {
         });
     };
     
-    const handleAddVideosToCategory = (categoryId: string, newVideos: Video[], platform: 'youtube' | 'tiktok' | 'instagram') => {
-        setLearningCategories(prevCategories => {
-            const updatedCategories = prevCategories.map(cat => {
-                if (cat.id === categoryId) {
-                    let updatedCat = { ...cat };
-                    if (platform === 'youtube') {
-                        const existingVideoIds = new Set(cat.videos.map(v => v.id));
-                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                        updatedCat.videos = [...cat.videos, ...uniqueNewVideos];
-                    } else if (platform === 'tiktok') {
-                        const existingVideoIds = new Set((cat.tiktokVideos || []).map(v => v.id));
-                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                        updatedCat.tiktokVideos = [...(cat.tiktokVideos || []), ...uniqueNewVideos];
-                    } else if (platform === 'instagram') {
-                        const existingVideoIds = new Set((cat.instagramVideos || []).map(v => v.id));
-                        const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                        updatedCat.instagramVideos = [...(cat.instagramVideos || []), ...uniqueNewVideos];
-                    }
-                    return updatedCat;
-                }
-                return cat;
-            });
-
-            if (selectedCategory?.id === categoryId) {
-                const updatedCategory = updatedCategories.find(c => c.id === categoryId);
-                if (updatedCategory) setSelectedCategory(updatedCategory);
-            }
-            return updatedCategories;
-        });
-    };
-
     const totalVideos = useMemo(() => learningCategories.reduce((acc, cat) => acc + cat.videos.length, 0), [learningCategories]);
     const completedVideos = watchedVideos.size;
     const overallProgress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
@@ -323,6 +399,7 @@ const App: React.FC = () => {
                 <MeetingPage
                     user={currentUser}
                     messages={meetingMessages}
+                    error={meetingError}
                     onSendMessage={handleSendMessage}
                     onBack={handleBackFromMeeting}
                     typingUsers={typingUsers}
@@ -350,7 +427,6 @@ const App: React.FC = () => {
         return (
             <DashboardPage
                 user={currentUser}
-                // Fix: Cannot find name 'onLogout'. Changed to use the defined handler 'handleLogout'.
                 onLogout={handleLogout}
                 onSelectCategory={handleSelectCategory}
                 overallProgress={overallProgress}
@@ -363,6 +439,7 @@ const App: React.FC = () => {
                 onNavigateToProjects={handleNavigateToProjects}
                 onOpenProfileModal={() => setIsProfileModalOpen(true)}
                 installPrompt={installPrompt}
+                loadingCategories={loadingCategories}
             />
         );
     };
@@ -373,9 +450,15 @@ const App: React.FC = () => {
     return (
         <>
             {isSimulationMode && <SimulationModeBanner />}
+            {notification && (
+                <NotificationBanner 
+                    message={notification.message}
+                    type={notification.type}
+                    onClose={() => setNotification(null)} />
+            )}
             {renderContent()}
             {showChatbot && <Chatbot />}
-            {showMusicPlayer && <MusicPlayer playlist={playlist} />}
+            {showMusicPlayer && <MusicPlayer playlist={playlist} error={playlistError} />}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
                 <AdminPanel onClose={handleToggleAdminPanel} />
             )}

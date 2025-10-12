@@ -13,7 +13,19 @@ interface MeetingPageProps {
     onTypingChange: (isTyping: boolean) => void;
     isAiActive: boolean;
     onToggleAi: () => void;
+    error: string | null;
 }
+
+const ErrorMessage: React.FC<{title: string, message: string, context: string}> = ({ title, message, context }) => (
+    <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 p-8 bg-dark/50 border-2 border-dashed border-red-500/30 rounded-lg animate-fade-in">
+        <Icon name="Fire" className="w-16 h-16 text-red-500/70 mb-4" />
+        <h2 className="text-2xl font-display text-white mb-2">{title}</h2>
+        <p className="max-w-md text-red-300/80">{message}</p>
+         <p className="mt-4 text-xs text-gray-600 font-mono bg-gray-900/50 px-2 py-1 rounded">
+            Context: {context}
+         </p>
+    </div>
+);
 
 const MeetingPage: React.FC<MeetingPageProps> = ({ 
     user, 
@@ -24,7 +36,8 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
     onlineUsers,
     onTypingChange, 
     isAiActive, 
-    onToggleAi 
+    onToggleAi,
+    error
 }) => {
     const [inputValue, setInputValue] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -115,22 +128,32 @@ const MeetingPage: React.FC<MeetingPageProps> = ({
             {/* Messages */}
             <main className="flex-grow container mx-auto px-4 sm:px-6 py-4 flex flex-col overflow-y-hidden">
                 <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                    {messages.map((msg) => (
-                        <div key={msg.id} className={`flex items-end gap-2 animate-message-in ${isCurrentUser(msg.user) ? 'justify-end' : 'justify-start'}`}>
-                            {!isCurrentUser(msg.user) && (
-                                <Avatar src={msg.avatarUrl} name={msg.user} size="sm" className="self-end" />
-                            )}
-                            <div className={`max-w-[70%]`}>
-                                {!isCurrentUser(msg.user) && (
-                                     <p className="text-xs text-gray-400 mb-1 ml-2">{msg.user}</p>
-                                )}
-                                <div className={`p-3 rounded-xl ${isCurrentUser(msg.user) ? 'bg-brand-red text-white rounded-br-none' : 'bg-gray-800 text-gray-200 rounded-bl-none'}`}>
-                                    <p className="text-sm" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</p>
+                    {error ? (
+                        <ErrorMessage 
+                            title="Erro na Sala de Reunião"
+                            message={error}
+                            context="Meeting Chat Fetch"
+                        />
+                    ) : (
+                        <>
+                            {messages.map((msg) => (
+                                <div key={msg.id} className={`flex items-end gap-2 animate-message-in ${isCurrentUser(msg.user) ? 'justify-end' : 'justify-start'}`}>
+                                    {!isCurrentUser(msg.user) && (
+                                        <Avatar src={msg.avatarUrl} name={msg.user} size="sm" className="self-end" />
+                                    )}
+                                    <div className={`max-w-[70%]`}>
+                                        {!isCurrentUser(msg.user) && (
+                                             <p className="text-xs text-gray-400 mb-1 ml-2">{msg.user}</p>
+                                        )}
+                                        <div className={`p-3 rounded-xl ${isCurrentUser(msg.user) ? 'bg-brand-red text-white rounded-br-none' : 'bg-gray-800 text-gray-200 rounded-bl-none'}`}>
+                                            <p className="text-sm" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                    ))}
-                    <div ref={messagesEndRef} />
+                            ))}
+                            <div ref={messagesEndRef} />
+                        </>
+                    )}
                 </div>
                 <div className="h-6 px-4 text-sm text-gray-400 italic">
                     {typingNames.length > 0 &&

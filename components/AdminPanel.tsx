@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Icon from './Icons';
 import type { Song } from '../types';
 import { generateLiveStyles } from '../services/geminiService';
-import { clearMeetingChat, uploadSong, setupPlaylistListener, deleteSong } from '../services/firebaseService';
+import { clearMeetingChat, uploadSong, setupPlaylistListener, deleteSong } from '../services/supabaseService';
 
 interface AdminPanelProps {
     onClose: () => void;
@@ -67,11 +67,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         setTimeout(() => setMessage(''), 3000);
     }
 
-    const handleClearChat = () => {
+    const handleClearChat = async () => {
         if (window.confirm("Você tem certeza que deseja apagar TODAS as mensagens do chat da reunião? Esta ação é irreversível.")) {
-            clearMeetingChat();
-            setMessage('O histórico do chat da reunião foi limpo com sucesso!');
-            setTimeout(() => setMessage(''), 3000);
+            try {
+                await clearMeetingChat();
+                setMessage('O histórico do chat da reunião foi limpo com sucesso!');
+                setTimeout(() => setMessage(''), 3000);
+            } catch (err) {
+                 const errorMessage = err instanceof Error ? err.message : 'Ocorreu um erro desconhecido.';
+                 setError(`Falha ao limpar o chat: ${errorMessage}`);
+            }
         }
     };
 

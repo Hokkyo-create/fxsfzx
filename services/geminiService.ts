@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import type { ChatMessage, LearningCategory, MeetingMessage, Project, QuizQuestion, Video, VideoScript, YouTubeTrack } from "../types";
+import type { ChatMessage, LearningCategory, MeetingMessage, Project, QuizQuestion, Video, VideoScript, YouTubeTrack, Notification } from "../types";
 import {
     getMockChatbotResponse,
     getMockEbookQuiz,
@@ -108,7 +108,7 @@ const extractJson = (text: string): any[] | null => {
     }
 };
 
-const YOUTUBE_API_KEY = "AIzaSyD3S9GO5qWWtfr934yAjt4YJ0qN6itMYqs";
+const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
 
 async function verifyYouTubeVideo(videoId: string): Promise<boolean> {
   // A simple check for a valid video ID format can prevent unnecessary fetches.
@@ -271,6 +271,11 @@ export const findVideos = async (categoryTitle: string, platform: 'youtube' | 't
             const data = await response.json();
             if (!response.ok) {
                 console.error("YouTube API Error:", JSON.stringify(data, null, 2));
+                const notification: Notification = {
+                    type: 'info',
+                    message: 'API do YouTube indisponível. Usando busca alternativa com IA.'
+                };
+                window.dispatchEvent(new CustomEvent('app-notification', { detail: notification }));
                 if (data?.error?.message.includes('are blocked')) {
                     console.warn('Direct YouTube API call failed, falling back to Gemini search.');
                     return findYouTubeVideosWithGeminiFallback(categoryTitle);
@@ -286,6 +291,11 @@ export const findVideos = async (categoryTitle: string, platform: 'youtube' | 't
             }));
         } catch (error) {
             console.error(`Error finding YouTube videos for "${categoryTitle}":`, error);
+            const notification: Notification = {
+                type: 'info',
+                message: 'Falha na busca do YouTube. Usando busca alternativa com IA.'
+            };
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: notification }));
             console.warn('Fallback to Gemini search due to an unexpected error.');
             return findYouTubeVideosWithGeminiFallback(categoryTitle);
         }

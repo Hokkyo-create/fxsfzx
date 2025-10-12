@@ -13,6 +13,7 @@ declare global {
 
 interface MusicPlayerProps {
     playlist: Song[];
+    error: string | null;
 }
 
 const formatTime = (time: number) => {
@@ -22,7 +23,7 @@ const formatTime = (time: number) => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
+const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist, error }) => {
     const [mode, setMode] = useState<'playlist' | 'youtube'>('playlist');
     const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
     const [youtubeTrack, setYoutubeTrack] = useState<YouTubeTrack | null>(null);
@@ -283,6 +284,31 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ playlist }) => {
                         </div>
                     </div>
                     
+                    {mode === 'playlist' && (
+                        <div className="flex-grow overflow-y-auto space-y-2 p-3 pr-2">
+                            {error ? (
+                                <div className="p-3 text-center text-xs text-red-300 bg-red-900/30 rounded-lg">
+                                    <strong>Falha ao carregar Rádio:</strong> {error}
+                                </div>
+                            ) : playlist.length > 0 ? (
+                                playlist.map((song, index) => (
+                                    <div 
+                                        key={song.id} 
+                                        onClick={() => setCurrentTrackIndex(index)}
+                                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer ${currentTrackIndex === index ? 'bg-brand-red/20' : 'hover:bg-gray-700'}`}
+                                    >
+                                        <div className="min-w-0">
+                                            <p className={`text-sm truncate font-semibold ${currentTrackIndex === index ? 'text-white' : 'text-gray-200'}`}>{song.title}</p>
+                                            <p className="text-xs text-gray-400 truncate">{song.artist}</p>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-center text-sm text-gray-500 py-4">A playlist está vazia.</p>
+                            )}
+                        </div>
+                    )}
+
                      {mode === 'youtube' && (
                         <div className="flex flex-col flex-grow min-h-0 px-3 pb-3">
                             <form onSubmit={handleSearch} className="relative py-3">
