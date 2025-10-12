@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import type { MeetingMessage, OnlineUser, Project, Song, User, Video } from '../types';
+import type { MeetingMessage, OnlineUser, Project, Song, User, Video, LearningCategory } from '../types';
 import type { RealtimeChannel, PostgrestError } from '@supabase/supabase-js';
 
 // --- Centralized Error Formatting ---
@@ -8,7 +8,6 @@ export const formatSupabaseError = (error: PostgrestError | Error | null, contex
 
     console.error(`Error with ${context}:`, error);
     
-    // Check for specific Supabase error codes
     if ('code' in error && error.code === 'PGRST205') {
         const tableNameMatch = error.message.match(/'public\.(.*?)'/);
         const tableName = tableNameMatch ? tableNameMatch[1] : context;
@@ -16,9 +15,9 @@ export const formatSupabaseError = (error: PostgrestError | Error | null, contex
     }
     
     if (error.message && (error.message.toLowerCase().includes('rls') || error.message.toLowerCase().includes('security policies') || ('code' in error && error.code === '42501'))) {
-        let action = 'ler'; // Default action is read
+        let action = 'ler';
         if (error.message.toLowerCase().includes('violates row-level security policy')) {
-             action = 'gravar novos dados'; // This is an insert/update violation
+             action = 'gravar novos dados';
         }
         return `Acesso negado para "${context}". Verifique se a política de RLS (Row Level Security) que permite ${action} está configurada no seu painel do Supabase.`;
     }
@@ -106,46 +105,7 @@ export const setupVideosListener = (callback: (videos: Record<string, Video[]>, 
             return;
         }
 
-        // --- Self-Healing: Verify videos exist and clean up any that don't ---
-        const invalidVideoIds: string[] = [];
-        const verificationPromises = (data as any[]).map(async (video): Promise<any | null> => {
-            // Only verify YouTube videos for now, as other platforms don't have a public verification endpoint
-            if (video.platform !== 'youtube') return video;
-
-            try {
-                // Use YouTube's public oEmbed endpoint. It returns 404 for non-existent/private videos.
-                const oEmbedResponse = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${video.id}&format=json`);
-                if (!oEmbedResponse.ok) {
-                    invalidVideoIds.push(video.id);
-                    return null; // Mark as invalid
-                }
-                return video; // Video is valid
-            } catch (e) {
-                console.warn(`Network error verifying video ID ${video.id} from database. Assuming invalid.`, e);
-                invalidVideoIds.push(video.id);
-                return null; // Mark as invalid on network error
-            }
-        });
-
-        const settledResults = await Promise.all(verificationPromises);
-        const validVideos = settledResults.filter(v => v !== null);
-
-        if (invalidVideoIds.length > 0) {
-            console.log(`[Self-Healing] Found ${invalidVideoIds.length} invalid videos in the database. Removing them...`, invalidVideoIds);
-            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: `Removendo ${invalidVideoIds.length} vídeos inválidos da sua lista.` }}));
-            
-            const { error: deleteError } = await supabase
-                .from('learning_videos')
-                .delete()
-                .in('id', invalidVideoIds);
-
-            if (deleteError) {
-                console.error("Failed to self-heal and delete invalid videos:", deleteError);
-            }
-        }
-        // --- End of Self-Healing Logic ---
-
-        const videosByCategory = (validVideos as any[]).reduce((acc, video) => {
+        const videosByCategory = (data as any[]).reduce((acc, video) => {
             const mappedVideo: Video = {
                 id: video.id,
                 title: video.title,
@@ -280,6 +240,37 @@ export const goOffline = (userName: string) => {
 };
 
 // Learning Videos Actions
+export const seedInitialVideos = async (categories: LearningCategory[]): Promise<void> => {
+    const allVideosToInsert = categories.flatMap(category => 
+        category.videos.map(video => ({
+            id: video.id,
+            category_id: category.id,
+            platform: video.platform || 'youtube',
+            title: video.title,
+            duration: video.duration,
+            thumbnail_url: video.thumbnailUrl,
+        }))
+    );
+
+    if (allVideosToInsert.length === 0) {
+        console.log("No initial videos to seed.");
+        return;
+    }
+
+    const { error } = await supabase.from('learning_videos').upsert(allVideosToInsert, {
+        onConflict: 'id',
+        ignoreDuplicates: true,
+    });
+
+    if (error) {
+        console.error("Error seeding initial videos:", error);
+        throw new Error("Falha ao carregar o conteúdo inicial das trilhas de conhecimento.");
+    }
+
+    console.log(`Successfully seeded/verified ${allVideosToInsert.length} initial videos.`);
+};
+
+
 export const addVideos = async (categoryId: string, platform: string, videos: Video[]) => {
     const videosToInsert = videos.map(video => ({
         id: video.id,

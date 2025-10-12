@@ -49,7 +49,7 @@ export const getMockImageBase64 = (): string => {
     return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN8/x8AAuMB8DtXNJsAAAAASUVORK5CYII=";
 };
 
-export const getMockEbookStream = (): string[] => {
+export async function* getMockEbookStreamGenerator(): AsyncGenerator<string> {
     const mockContent = `
 # Título do Ebook de Simulação
 [INTRODUÇÃO]
@@ -62,8 +62,12 @@ Isso evita que o aplicativo trave e permite que o desenvolvimento e o teste da i
 Este é o fim do ebook de simulação.
     `;
     // Split into chunks to simulate streaming
-    return mockContent.match(/.{1,50}/g) || [mockContent];
-};
+    const chunks = mockContent.match(/.{1,50}/g) || [mockContent];
+    for (const chunk of chunks) {
+        await new Promise(resolve => setTimeout(resolve, 50)); // simulate network delay
+        yield chunk;
+    }
+}
 
 export const getMockPromptIdeas = (): string[] => {
     return [

@@ -28,6 +28,7 @@ import {
     addVideos,
     getUserProgress,
     updateUserProgress,
+    seedInitialVideos,
 } from './services/supabaseService';
 import type { PostgrestError } from '@supabase/supabase-js';
 
@@ -90,11 +91,7 @@ const App: React.FC = () => {
                 if (foundUser) {
                     const storedAvatar = localStorage.getItem(`arc7hive_avatar_${foundUser.name}`);
                     const userWithAvatar = { ...foundUser, avatarUrl: storedAvatar || foundUser.avatarUrl };
-                    setCurrentUser(userWithAvatar);
-                    
-                    const progress = await getUserProgress(foundUser.name);
-                    setWatchedVideos(progress);
-                    isInitialProgressLoad.current = true;
+                    await handleLogin(userWithAvatar, false); // Log in without showing welcome screen
                 }
             }
         };
@@ -194,14 +191,12 @@ const App: React.FC = () => {
         
         const unsubscribe = setupVideosListener((videosByCategory, error) => {
             if (error) {
-                 // Errors are now handled locally in components that need this data, like Dashboard.
-                 // For now, we can just log it or set a fallback state.
                  console.error(formatSupabaseError(error, 'trilhas de conhecimento'));
             } else {
                 setLearningCategories(currentCategories => 
                     currentCategories.map(cat => ({
                         ...cat,
-                        videos: videosByCategory[cat.id] || [],
+                        videos: videosByCategory[cat.id] || cat.videos, // Keep local videos if DB is empty for a category
                     }))
                 );
             }
@@ -210,12 +205,33 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, [currentUser]);
 
-    const handleLogin = async (user: User) => {
+    const handleLogin = async (user: User, showWelcomeScreen: boolean = true) => {
         const storedAvatar = localStorage.getItem(`arc7hive_avatar_${user.name}`);
         const userToLogin = { ...user, avatarUrl: storedAvatar || user.avatarUrl };
         setCurrentUser(userToLogin);
         localStorage.setItem('arc7hive_user', user.name);
-        setShowWelcome(true);
+        if (showWelcomeScreen) {
+          setShowWelcome(true);
+        }
+        
+        // One-time content seeding
+        const isSeeded = localStorage.getItem('arc7hive_content_seeded_v1');
+        if (!isSeeded) {
+            try {
+                console.log("Performing one-time content seeding...");
+                await seedInitialVideos(initialCategories);
+                localStorage.setItem('arc7hive_content_seeded_v1', 'true');
+                console.log("Content seeding complete.");
+                window.dispatchEvent(new CustomEvent('app-notification', { 
+                    detail: { type: 'info', message: 'Conteúdo inicial carregado com sucesso!' }
+                }));
+            } catch (error) {
+                 const message = error instanceof Error ? error.message : 'Falha ao carregar conteúdo inicial.';
+                 window.dispatchEvent(new CustomEvent('app-notification', { 
+                    detail: { type: 'error', message }
+                }));
+            }
+        }
         
         const progress = await getUserProgress(user.name);
         setWatchedVideos(progress);
@@ -235,7 +251,6 @@ const App: React.FC = () => {
         setIsProjectsOpen(false);
         setSelectedProject(null);
         setGeneratingProjectConfig(null);
-        // Reset categories to initial state to clear video data
         setLearningCategories(initialCategories);
     };
     
@@ -266,11 +281,9 @@ const App: React.FC = () => {
             if (isMeetingAiActive && text.toLowerCase().startsWith('@arc7')) {
                  const aiPrompt = text.substring(5).trim();
                  const responseText = await getMeetingChatResponse(aiPrompt, [...meetingMessages]);
-                 // The AI avatar is fixed
                  await sendMessage('ARC7', responseText, 'https://placehold.co/100x100/71717A/FFFFFF?text=AI');
             }
         } catch (error) {
-            // Handle send message error locally if needed, e.g., show a small 'x' next to the message
             console.error(`Falha ao enviar mensagem: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
         }
     }, [currentUser, isMeetingAiActive, meetingMessages]);
@@ -324,28 +337,21 @@ const App: React.FC = () => {
     
     const handleAddVideosToCategory = useCallback(async (categoryId: string, newVideos: Video[]) => {
         try {
-            // Perform the database update
             await addVideos(categoryId, 'youtube', newVideos);
             
-            // Optimistically update the local state to reflect the change immediately.
-            // The real-time listener will eventually sync with the database, ensuring consistency.
             setLearningCategories(currentCategories => 
                 currentCategories.map(cat => {
                     if (cat.id === categoryId) {
-                        // Create a set of existing video IDs for quick lookup to prevent duplicates
                         const existingVideoIds = new Set(cat.videos.map(v => v.id));
-                        // Filter out any new videos that might already be in the state
                         const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
                         
-                        // Return the category with the combined list of old and new videos
                         return { ...cat, videos: [...cat.videos, ...uniqueNewVideos] };
                     }
                     return cat;
                 })
             );
         } catch (error) {
-            console.error(error); // The component calling this should handle the user-facing error.
-            // Re-throw the error so the calling component knows the operation failed.
+            console.error(error);
             throw error;
         }
     }, []);
@@ -355,7 +361,6 @@ const App: React.FC = () => {
     const overallProgress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
 
     const nextVideoInfo: NextVideoInfo | null = useMemo(() => {
-        // Find the first category with partial progress
         const partiallyWatchedCategory = learningCategories.find(cat => {
             const total = cat.videos.length;
             if (total === 0) return false;
@@ -372,11 +377,8 @@ const App: React.FC = () => {
             }
         }
     
-        // Fallback: if all videos in partially watched categories are watched,
-        // or if no videos are watched at all, suggest the first video of the first category.
         const firstCategoryWithVideos = learningCategories.find(c => c.videos.length > 0);
         if (firstCategoryWithVideos && firstCategoryWithVideos.videos[0]) {
-            // Only suggest if it's not already watched (covers case where everything is watched)
             if (!watchedVideos.has(firstCategoryWithVideos.videos[0].id)) {
                 return { video: firstCategoryWithVideos.videos[0], category: firstCategoryWithVideos };
             }
@@ -387,7 +389,7 @@ const App: React.FC = () => {
     
     const renderContent = () => {
         if (!currentUser) {
-            return <LoginPage onLogin={handleLogin} />;
+            return <LoginPage onLogin={(user) => handleLogin(user, true)} />;
         }
 
         if (showWelcome) {
