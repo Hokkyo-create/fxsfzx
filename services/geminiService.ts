@@ -3,9 +3,6 @@ import { GoogleGenAI, Type, GenerateContentResponse, GenerateImagesResponse, Ope
 import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video } from "../types";
 import * as mockService from './geminiServiceMocks';
 
-const YOUTUBE_API_KEY = 'AIzaSyAJxJtTjLVFMtAU93alX8LzFIIu96d70io';
-
-let isYouTubeQuotaExceeded = false;
 let isGeminiQuotaExceeded = false;
 
 class QuotaExceededError extends Error {
@@ -49,20 +46,31 @@ async function handleApiCall<T>(apiCall: () => Promise<T>, functionName: string)
     }
 }
 
-const parseYoutubeDuration = (isoDuration: string): string => {
-    const regex = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
-    const matches = isoDuration.match(regex);
+// --- Invidious/FreeTube API Integration ---
 
-    if (!matches) return "0:00";
+// A list of reliable Invidious instances to cycle through.
+// These are free, open-source proxies for YouTube.
+const invidiousInstances = [
+    'https://invidious.projectsegfau.lt',
+    'https://yewtu.be',
+    'https://vid.puffyan.us',
+    'https://invidious.kavin.rocks'
+];
+let currentInstanceIndex = 0;
 
-    const hours = matches[1] ? parseInt(matches[1], 10) : 0;
-    const minutes = matches[2] ? parseInt(matches[2], 10) : 0;
-    const seconds = matches[3] ? parseInt(matches[3], 10) : 0;
-    
-    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+const getInvidiousUrl = () => invidiousInstances[currentInstanceIndex];
+
+// Helper to cycle through instances on failure
+const cycleInvidiousInstance = () => {
+    currentInstanceIndex = (currentInstanceIndex + 1) % invidiousInstances.length;
+    console.warn(`Invidious instance failed, switching to new instance: ${getInvidiousUrl()}`);
+};
+
+const formatSecondsDuration = (seconds: number): string => {
+    if (isNaN(seconds) || seconds < 0) return "0:00";
+    const totalSeconds = Math.floor(seconds);
     const displayMinutes = Math.floor(totalSeconds / 60);
     const displaySeconds = totalSeconds % 60;
-
     return `${displayMinutes}:${displaySeconds.toString().padStart(2, '0')}`;
 };
 
@@ -77,76 +85,60 @@ const categorySearchQueries: Record<string, string> = {
 };
 
 export const findMoreVideos = async (categoryTitle: string, existingVideos: Video[]): Promise<Video[]> => {
-    const existingVideoIds = existingVideos.map(v => v.id);
-    
-    if (!YOUTUBE_API_KEY) {
-        throw new Error("A chave da API do YouTube não foi configurada. O administrador precisa adicionar a YOUTUBE_API_KEY nas variáveis de ambiente.");
-    }
-
-    if (isYouTubeQuotaExceeded) {
-         throw new Error("A cota diária da API do YouTube foi atingida. Novos vídeos estarão disponíveis amanhã.");
-    }
+    const existingVideoIds = new Set(existingVideos.map(v => v.id));
 
     const specificQuery = categorySearchQueries[categoryTitle];
     const genericQuery = `"${categoryTitle}" tutorial | "${categoryTitle}" curso`;
     const searchQuery = specificQuery ? `${specificQuery} | ${genericQuery}` : genericQuery;
     
-    console.log(`Searching YouTube with query: ${searchQuery}`);
+    console.log(`Searching with Invidious for: ${searchQuery}`);
 
     try {
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoEmbeddable=true&regionCode=BR&maxResults=50&key=${YOUTUBE_API_KEY}&relevanceLanguage=pt`;
-        
-        const searchResponse = await fetch(searchUrl);
-        if (!searchResponse.ok) {
-            if (searchResponse.status === 403) {
-                 console.warn("Cota da API do YouTube excedida.");
-                 isYouTubeQuotaExceeded = true;
-                 throw new Error("A cota diária da API do YouTube foi atingida. Novos vídeos estarão disponíveis amanhã.");
+        let response;
+        let data;
+        let attempt = 0;
+        const maxAttempts = invidiousInstances.length;
+
+        // Try fetching from instances until one succeeds or all fail
+        while (attempt < maxAttempts) {
+            const searchUrl = `${getInvidiousUrl()}/api/v1/search?q=${encodeURIComponent(searchQuery)}&type=video&region=BR&sort_by=relevance`;
+            try {
+                response = await fetch(searchUrl);
+                if (response.ok) {
+                    data = await response.json();
+                    break;
+                }
+                cycleInvidiousInstance();
+            } catch (e) {
+                cycleInvidiousInstance();
             }
-            const errorData = await searchResponse.json();
-            console.error("YouTube Search API Error:", errorData);
-            throw new Error(`Falha na busca do YouTube. Status: ${searchResponse.status}`);
+            attempt++;
         }
-        
-        const searchData = await searchResponse.json();
-        const candidateIds = searchData.items
-            ? searchData.items.map((item: any) => item.id.videoId).filter((id: string) => id && !existingVideoIds.includes(id))
-            : [];
-            
-        if (candidateIds.length === 0) return [];
 
-        const idsToValidate = [...new Set(candidateIds)].slice(0, 50).join(',');
-        if (!idsToValidate) return [];
-        
-        const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet,status&id=${idsToValidate}&key=${YOUTUBE_API_KEY}`;
-        const detailsResponse = await fetch(detailsUrl);
-
-        if (!detailsResponse.ok) {
-             const errorData = await detailsResponse.json();
-             console.error("YouTube Videos API Error:", errorData);
-             throw new Error(`Falha ao buscar detalhes dos vídeos. Status: ${detailsResponse.status}`);
+        if (!data) {
+            throw new Error(`Falha na busca de vídeos após tentar ${maxAttempts} servidores.`);
         }
-        
-        const detailsData = await detailsResponse.json();
-        if (!detailsData.items || detailsData.items.length === 0) return [];
 
-        const validVideos: Video[] = detailsData.items
-            .filter((item: any) => item.status?.embeddable === true && (item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url))
-            .map((item: any) => ({
-                id: item.id,
-                title: item.snippet.title,
-                duration: parseYoutubeDuration(item.contentDetails.duration),
-                thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium.url,
+        if (!Array.isArray(data)) return [];
+
+        const validVideos: Video[] = data
+            .filter(item => item.type === 'video' && item.videoId && !existingVideoIds.has(item.videoId) && item.lengthSeconds > 60) // filter out shorts and existing
+            .map((item): Video => ({
+                id: item.videoId,
+                title: item.title,
+                duration: formatSecondsDuration(item.lengthSeconds),
+                thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || item.videoThumbnails?.[0]?.url || '',
                 platform: 'youtube',
-            }));
-        
-        console.log(`Found ${validVideos.length} valid new videos.`);
-        return validVideos.slice(0, 7);
+            }))
+            .filter(video => video.thumbnailUrl); // Ensure thumbnail exists
+
+        console.log(`Found ${validVideos.length} valid new videos via Invidious.`);
+        return validVideos.sort(() => 0.5 - Math.random()).slice(0, 7);
 
     } catch (error) {
-        console.error("An unexpected error occurred during the YouTube API processing:", error);
-        if (error instanceof Error) throw error;
-        throw new Error("Falha ao se comunicar com a API do YouTube.");
+        console.error("An unexpected error occurred during the Invidious API processing:", error);
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Serviço de busca de vídeo indisponível. Usando dados de simulação.' }}));
+        return mockService.getMockFindMoreVideos();
     }
 };
 
@@ -211,49 +203,55 @@ export const generateLiveStyles = async (prompt: string): Promise<string> => {
 };
 
 export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
-    if (!YOUTUBE_API_KEY) throw new Error("A chave da API do YouTube não foi configurada.");
-    
-    if (isYouTubeQuotaExceeded) {
-        throw new Error("A cota diária da API do YouTube foi atingida. A busca de músicas estará disponível amanhã.");
-    }
-    
     const searchQuery = `${query} official audio | ${query} lyrics | ${query} music`;
 
     try {
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoCategoryId=10&maxResults=10&key=${YOUTUBE_API_KEY}&relevanceLanguage=pt`;
-        
-        const response = await fetch(searchUrl);
-        if (!response.ok) {
-            if (response.status === 403) {
-                 console.warn("Cota da API do YouTube para músicas excedida.");
-                 isYouTubeQuotaExceeded = true;
-                 throw new Error("A cota diária da API do YouTube foi atingida. A busca de músicas estará disponível amanhã.");
+        let response;
+        let data;
+        let attempt = 0;
+        const maxAttempts = invidiousInstances.length;
+
+        // Try fetching from instances until one succeeds or all fail
+        while(attempt < maxAttempts) {
+            const searchUrl = `${getInvidiousUrl()}/api/v1/search?q=${encodeURIComponent(searchQuery)}&type=video&features=music&sort_by=relevance`;
+            try {
+                response = await fetch(searchUrl);
+                if (response.ok) {
+                    data = await response.json();
+                    break;
+                }
+                cycleInvidiousInstance();
+            } catch(e) {
+                cycleInvidiousInstance();
             }
-            const errorData = await response.json();
-            console.error("YouTube Music Search API Error:", errorData);
-            throw new Error(`Falha na busca de músicas. Status: ${response.status}`);
+            attempt++;
         }
         
-        const data = await response.json();
-        if (!data.items || data.items.length === 0) return [];
+        if (!data) {
+            throw new Error(`Falha na busca de músicas após tentar ${maxAttempts} servidores.`);
+        }
+
+        if (!Array.isArray(data) || data.length === 0) return [];
         
         const sanitizeTitle = (title: string) => {
              return title.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').replace(/official video/i, '').replace(/music video/i, '').replace(/lyrics/i, '').trim();
         };
 
-        return data.items
-            .filter((item: any) => item.id?.videoId && item.snippet?.title)
+        return data
+            .filter((item: any) => item.type === 'video' && item.videoId && item.title)
             .map((item: any) => ({
-                id: item.id.videoId,
-                title: sanitizeTitle(item.snippet.title),
-                artist: item.snippet.channelTitle,
-                thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+                id: item.videoId,
+                title: sanitizeTitle(item.title),
+                artist: item.author,
+                thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || item.videoThumbnails?.[0]?.url || '',
             }));
 
     } catch (error) {
-        console.error("An unexpected error occurred during the YouTube Music API search:", error);
-        if (error instanceof Error) throw error;
-        throw new Error("Falha ao se comunicar com a API do YouTube para buscar músicas.");
+        console.error("An unexpected error occurred during the YouTube Music API search (via proxy):", error);
+        if (error instanceof Error) {
+            throw error;
+        }
+        throw new Error("Falha ao se comunicar com o serviço de busca de músicas.");
     }
 };
 
