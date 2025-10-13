@@ -46,24 +46,25 @@ async function handleApiCall<T>(apiCall: () => Promise<T>, functionName: string)
     }
 }
 
-// --- Invidious/FreeTube API Integration ---
+// --- Resilient Video & Music Search Service ---
 
-// A list of reliable Invidious instances to cycle through.
-// These are free, open-source proxies for YouTube.
-const invidiousInstances = [
-    'https://invidious.projectsegfau.lt',
-    'https://yewtu.be',
-    'https://vid.puffyan.us',
-    'https://invidious.kavin.rocks'
-];
-let currentInstanceIndex = 0;
+// Helper to add a timeout to fetch requests, preventing infinite loading.
+const fetchWithTimeout = (url: string, timeout = 5000): Promise<Response> => {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error('Request timed out'));
+        }, timeout);
 
-const getInvidiousUrl = () => invidiousInstances[currentInstanceIndex];
-
-// Helper to cycle through instances on failure
-const cycleInvidiousInstance = () => {
-    currentInstanceIndex = (currentInstanceIndex + 1) % invidiousInstances.length;
-    console.warn(`Invidious instance failed, switching to new instance: ${getInvidiousUrl()}`);
+        fetch(url)
+            .then(response => {
+                clearTimeout(timer);
+                resolve(response);
+            })
+            .catch(err => {
+                clearTimeout(timer);
+                reject(err);
+            });
+    });
 };
 
 const formatSecondsDuration = (seconds: number): string => {
@@ -73,6 +74,186 @@ const formatSecondsDuration = (seconds: number): string => {
     const displaySeconds = totalSeconds % 60;
     return `${displayMinutes}:${displaySeconds.toString().padStart(2, '0')}`;
 };
+
+// Helper to shuffle array for load balancing providers
+const shuffleArray = <T>(array: T[]): T[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+};
+
+
+// --- Video Search Providers ---
+
+interface VideoProvider {
+    name: string;
+    searchUrl: (query: string) => string;
+    parseResponse: (data: any, existingVideoIds: Set<string>) => Video[];
+}
+
+const parseInvidiousVideoResponse = (data: any, existingVideoIds: Set<string>): Video[] => {
+    if (!Array.isArray(data)) return [];
+    return data
+        .filter(item => item.type === 'video' && item.videoId && !existingVideoIds.has(item.videoId) && item.lengthSeconds > 300) // 5 minutes minimum
+        .map((item): Video => ({
+            id: item.videoId,
+            title: item.title,
+            duration: formatSecondsDuration(item.lengthSeconds),
+            thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || item.videoThumbnails?.[0]?.url || '',
+            platform: 'youtube',
+        }))
+        .filter(video => video.thumbnailUrl);
+};
+
+const parsePipedVideoResponse = (data: any, existingVideoIds: Set<string>): Video[] => {
+    if (!data.items || !Array.isArray(data.items)) return [];
+    return data.items
+        .filter((item: any) => {
+            if (item.type !== 'stream' || !item.url || item.duration <= 300) return false;
+            const videoId = item.url.split('v=')[1];
+            return videoId && !existingVideoIds.has(videoId);
+        })
+        .map((item: any): Video => ({
+            id: item.url.split('v=')[1],
+            title: item.title,
+            duration: formatSecondsDuration(item.duration),
+            thumbnailUrl: item.thumbnail,
+            platform: 'youtube',
+        }))
+        .filter(video => video.thumbnailUrl);
+};
+
+// Curated list of public instances
+const invidiousApiInstances = [
+    'https://yewtu.be',
+    'https://vid.puffyan.us',
+    'https://invidious.kavin.rocks',
+    'https://iv.ggtyler.dev',
+    'https://invidious.lunar.icu',
+    'https://inv.n8p.xyz',
+    'https://invidious.incogniweb.net',
+];
+
+const pipedApiInstances = [
+    'https://pipedapi.kavin.rocks',
+    'https://piped-api.online.hifis.dev',
+    'https://pipedapi.smnz.de',
+];
+
+const videoProviders: VideoProvider[] = [
+    ...invidiousApiInstances.map(instance => ({
+        name: `Invidious (${new URL(instance).hostname})`,
+        searchUrl: (query: string) => `${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&region=BR&sort_by=relevance`,
+        parseResponse: parseInvidiousVideoResponse
+    })),
+    ...pipedApiInstances.map(instance => ({
+        name: `Piped (${new URL(instance).hostname})`,
+        searchUrl: (query: string) => `${instance}/search?q=${encodeURIComponent(query)}&filter=videos`,
+        parseResponse: parsePipedVideoResponse
+    }))
+];
+
+async function searchVideosFromProviders(searchQuery: string, existingVideoIds: Set<string>): Promise<Video[]> {
+    const shuffledProviders = shuffleArray(videoProviders);
+
+    for (const provider of shuffledProviders) {
+        console.log(`Attempting video search with: ${provider.name}`);
+        try {
+            const response = await fetchWithTimeout(provider.searchUrl(searchQuery));
+            if (!response.ok) throw new Error(`Response not OK: ${response.status}`);
+            
+            const data = await response.json();
+            const videos = provider.parseResponse(data, existingVideoIds);
+
+            if (videos.length > 0) {
+                console.log(`Found ${videos.length} videos with ${provider.name}`);
+                return videos;
+            }
+        } catch (e) {
+            console.error(`Provider ${provider.name} failed:`, e);
+        }
+    }
+    throw new Error('Todos os provedores de busca de vídeo falharam.');
+}
+
+
+// --- Music Search Providers ---
+
+interface MusicProvider {
+    name: string;
+    searchUrl: (query: string) => string;
+    parseResponse: (data: any) => YouTubeTrack[];
+}
+
+const sanitizeTitle = (title: string): string => {
+     return title.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').replace(/official video/i, '').replace(/music video/i, '').replace(/lyrics/i, '').trim();
+};
+
+const parseInvidiousMusicResponse = (data: any): YouTubeTrack[] => {
+    if (!Array.isArray(data)) return [];
+    return data
+        .filter((item: any) => item.type === 'video' && item.videoId && item.title)
+        .map((item: any): YouTubeTrack => ({
+            id: item.videoId,
+            title: sanitizeTitle(item.title),
+            artist: item.author,
+            thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || item.videoThumbnails?.[0]?.url || '',
+        }));
+};
+
+const parsePipedMusicResponse = (data: any): YouTubeTrack[] => {
+    if (!data.items || !Array.isArray(data.items)) return [];
+    return data.items
+        .filter((item: any) => item.type === 'stream' && item.url && item.title)
+        .map((item: any): YouTubeTrack => ({
+            id: item.url.split('v=')[1],
+            title: sanitizeTitle(item.title),
+            artist: item.uploaderName,
+            thumbnailUrl: item.thumbnail,
+        }));
+};
+
+
+const musicProviders: MusicProvider[] = [
+    ...invidiousApiInstances.map(instance => ({
+        name: `Invidious Music (${new URL(instance).hostname})`,
+        searchUrl: (query: string) => `${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&features=music&sort_by=relevance`,
+        parseResponse: parseInvidiousMusicResponse
+    })),
+    ...pipedApiInstances.map(instance => ({
+        name: `Piped Music (${new URL(instance).hostname})`,
+        searchUrl: (query: string) => `${instance}/search?q=${encodeURIComponent(query)}&filter=music_songs`,
+        parseResponse: parsePipedMusicResponse
+    }))
+];
+
+
+async function searchMusicFromProviders(searchQuery: string): Promise<YouTubeTrack[]> {
+    const shuffledProviders = shuffleArray(musicProviders);
+
+    for (const provider of shuffledProviders) {
+        console.log(`Attempting music search with: ${provider.name}`);
+        try {
+            const response = await fetchWithTimeout(provider.searchUrl(searchQuery));
+            if (!response.ok) throw new Error(`Response not OK: ${response.status}`);
+            
+            const data = await response.json();
+            const tracks = provider.parseResponse(data);
+
+            if (tracks.length > 0) {
+                console.log(`Found ${tracks.length} tracks with ${provider.name}`);
+                return tracks;
+            }
+        } catch (e) {
+            console.error(`Provider ${provider.name} failed:`, e);
+        }
+    }
+    throw new Error('Todos os provedores de busca de música falharam.');
+}
+
 
 const categorySearchQueries: Record<string, string> = {
     'Inteligência Artificial': '"Inteligência Artificial" curso completo | "machine learning" para iniciantes | "redes neurais" tutorial | "deep learning" explicado | "chatgpt" para negócios | "midjourney" tutorial',
@@ -84,6 +265,9 @@ const categorySearchQueries: Record<string, string> = {
     'Psicologia e Desenvolvimento': '"48 leis do poder" resumo | "estoicismo" na prática | "sun tzu a arte da guerra" explicado | "inteligência emocional" daniel goleman | "o poder do hábito" | "leis da natureza humana" | "comunicação assertiva"',
 };
 
+
+// --- Main Exported Service Functions ---
+
 export const findMoreVideos = async (categoryTitle: string, existingVideos: Video[]): Promise<Video[]> => {
     const existingVideoIds = new Set(existingVideos.map(v => v.id));
 
@@ -91,54 +275,32 @@ export const findMoreVideos = async (categoryTitle: string, existingVideos: Vide
     const genericQuery = `"${categoryTitle}" tutorial | "${categoryTitle}" curso`;
     const searchQuery = specificQuery ? `${specificQuery} | ${genericQuery}` : genericQuery;
     
-    console.log(`Searching with Invidious for: ${searchQuery}`);
+    console.log(`Searching with providers for: ${searchQuery}`);
 
     try {
-        let response;
-        let data;
-        let attempt = 0;
-        const maxAttempts = invidiousInstances.length;
-
-        // Try fetching from instances until one succeeds or all fail
-        while (attempt < maxAttempts) {
-            const searchUrl = `${getInvidiousUrl()}/api/v1/search?q=${encodeURIComponent(searchQuery)}&type=video&region=BR&sort_by=relevance`;
-            try {
-                response = await fetch(searchUrl);
-                if (response.ok) {
-                    data = await response.json();
-                    break;
-                }
-                cycleInvidiousInstance();
-            } catch (e) {
-                cycleInvidiousInstance();
-            }
-            attempt++;
-        }
-
-        if (!data) {
-            throw new Error(`Falha na busca de vídeos após tentar ${maxAttempts} servidores.`);
-        }
-
-        if (!Array.isArray(data)) return [];
-
-        const validVideos: Video[] = data
-            .filter(item => item.type === 'video' && item.videoId && !existingVideoIds.has(item.videoId) && item.lengthSeconds > 60) // filter out shorts and existing
-            .map((item): Video => ({
-                id: item.videoId,
-                title: item.title,
-                duration: formatSecondsDuration(item.lengthSeconds),
-                thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || item.videoThumbnails?.[0]?.url || '',
-                platform: 'youtube',
-            }))
-            .filter(video => video.thumbnailUrl); // Ensure thumbnail exists
-
-        console.log(`Found ${validVideos.length} valid new videos via Invidious.`);
-        return validVideos.sort(() => 0.5 - Math.random()).slice(0, 7);
+        const foundVideos = await searchVideosFromProviders(searchQuery, existingVideoIds);
+        
+        console.log(`Found ${foundVideos.length} total new videos.`);
+        return foundVideos.sort(() => 0.5 - Math.random()).slice(0, 10);
 
     } catch (error) {
-        console.error("An unexpected error occurred during the Invidious API processing:", error);
-        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Serviço de busca de vídeo indisponível. Usando dados de simulação.' }}));
-        return mockService.getMockFindMoreVideos();
+        console.error("An unexpected error occurred during the video provider search:", error);
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Serviço de busca de vídeo indisponível no momento.' }}));
+        return [];
+    }
+};
+
+export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
+    const searchQuery = `${query} official audio | ${query} lyrics | ${query} music`;
+
+    try {
+        return await searchMusicFromProviders(searchQuery);
+    } catch (error) {
+        console.error("An unexpected error occurred during the YouTube Music API search:", error);
+        if (error instanceof Error) {
+            throw new Error(`Busca de músicas indisponível: ${error.message}`);
+        }
+        throw new Error("Falha ao se comunicar com o serviço de busca de músicas.");
     }
 };
 
@@ -199,59 +361,6 @@ export const generateLiveStyles = async (prompt: string): Promise<string> => {
             return mockService.getMockLiveStyles();
         }
         throw error;
-    }
-};
-
-export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
-    const searchQuery = `${query} official audio | ${query} lyrics | ${query} music`;
-
-    try {
-        let response;
-        let data;
-        let attempt = 0;
-        const maxAttempts = invidiousInstances.length;
-
-        // Try fetching from instances until one succeeds or all fail
-        while(attempt < maxAttempts) {
-            const searchUrl = `${getInvidiousUrl()}/api/v1/search?q=${encodeURIComponent(searchQuery)}&type=video&features=music&sort_by=relevance`;
-            try {
-                response = await fetch(searchUrl);
-                if (response.ok) {
-                    data = await response.json();
-                    break;
-                }
-                cycleInvidiousInstance();
-            } catch(e) {
-                cycleInvidiousInstance();
-            }
-            attempt++;
-        }
-        
-        if (!data) {
-            throw new Error(`Falha na busca de músicas após tentar ${maxAttempts} servidores.`);
-        }
-
-        if (!Array.isArray(data) || data.length === 0) return [];
-        
-        const sanitizeTitle = (title: string) => {
-             return title.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').replace(/official video/i, '').replace(/music video/i, '').replace(/lyrics/i, '').trim();
-        };
-
-        return data
-            .filter((item: any) => item.type === 'video' && item.videoId && item.title)
-            .map((item: any) => ({
-                id: item.videoId,
-                title: sanitizeTitle(item.title),
-                artist: item.author,
-                thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || item.videoThumbnails?.[0]?.url || '',
-            }));
-
-    } catch (error) {
-        console.error("An unexpected error occurred during the YouTube Music API search (via proxy):", error);
-        if (error instanceof Error) {
-            throw error;
-        }
-        throw new Error("Falha ao se comunicar com o serviço de busca de músicas.");
     }
 };
 
