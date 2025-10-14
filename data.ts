@@ -13,14 +13,7 @@ export const categories: LearningCategory[] = [
         description: 'Aprenda sobre IA, machine learning e como usar ferramentas de IA no dia a dia',
         icon: 'Fire',
         color: 'red',
-        videos: [
-            { id: 'a23_M-f4v8k', title: 'O que é INTELIGÊNCIA ARTIFICIAL? (pt.1)', duration: '15:30', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/a23_M-f4v8k/hqdefault.jpg' },
-            { id: 'J_C6_zXg5pU', title: 'REDES NEURAIS: O que são e COMO FUNCIONAM?', duration: '18:22', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/J_C6_zXg5pU/hqdefault.jpg' },
-            { id: '5F_zYh_IixM', title: 'Como Usar o CHATGPT DIREITO (e tirar o máximo dele)', duration: '20:10', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/5F_zYh_IixM/hqdefault.jpg' },
-            { id: 'at-wDMPo_cE', title: 'Prompt Engineering: O guia para iniciantes.', duration: '19:42', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/at-wDMPo_cE/hqdefault.jpg' },
-            { id: 'Lade-Da_aEw', title: 'Como usar o MIDJOURNEY (Guia completo para iniciantes)', duration: '31:40', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/Lade-Da_aEw/hqdefault.jpg' },
-            { id: 'LQy_gmmph38', title: 'O que são LLMs? (Modelos de Linguagem Gigantes)', duration: '17:34', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/LQy_gmmph38/hqdefault.jpg' },
-        ],
+        videos: [],
     },
     {
         id: 'marketing-digital',
@@ -28,14 +21,7 @@ export const categories: LearningCategory[] = [
         description: 'Estratégias de marketing digital, redes sociais e vendas online',
         icon: 'Chart',
         color: 'orange',
-        videos: [
-            { id: 'uBYz9L2aN4c', title: 'CURSO DE TRÁFEGO PAGO PARA INICIANTES 2024 (AULA COMPLETA)', duration: '1:12:19', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/uBYz9L2aN4c/hqdefault.jpg' },
-            { id: 'tHjT-S4l-g8', title: 'AULA COMPLETA DE COPYWRITING (iniciantes)', duration: '40:37', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/tHjT-S4l-g8/hqdefault.jpg' },
-            { id: 'Yl-4hP5Ab-E', title: 'MARKETING DIGITAL PARA INICIANTES | Guia completo', duration: '29:56', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/Yl-4hP5Ab-E/hqdefault.jpg' },
-            { id: 'hJg2qQoLi-U', title: 'SEO para INICIANTES: O que é e como OTIMIZAR seu SITE?', duration: '10:58', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/hJg2qQoLi-U/hqdefault.jpg' },
-            { id: 'N40iHjA9lD8', title: 'Funil de Vendas no Marketing Digital: O Guia Completo', duration: '22:31', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/N40iHjA9lD8/hqdefault.jpg' },
-            { id: 'YDx3vJ4y-es', title: 'GOOGLE ADS PARA INICIANTES 2024: Como Anunciar Passo a Passo', duration: '58:04', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/YDx3vJ4y-es/hqdefault.jpg' },
-        ],
+        videos: [],
     },
     {
         id: 'mercado-financeiro',
@@ -43,14 +29,7 @@ export const categories: LearningCategory[] = [
         description: 'Investimentos, ações, criptomoedas e educação financeira',
         icon: 'Dollar',
         color: 'green',
-        videos: [
-            { id: 'SOd7-m-vLwQ', title: 'COMO INVESTIR DINHEIRO EM 2024 (GUIA PARA INICIANTES)', duration: '18:31', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/SOd7-m-vLwQ/hqdefault.jpg' },
-            { id: 'l4eJmZo8HEY', title: 'AÇÕES PARA INICIANTES: O GUIA COMPLETO PARA COMEÇAR A INVESTIR', duration: '28:44', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/l4eJmZo8HEY/hqdefault.jpg' },
-            { id: 'p7GNoF-C_mM', title: 'Como MONTAR UMA CARTEIRA de INVESTIMENTOS do ZERO', duration: '17:39', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/p7GNoF-C_mM/hqdefault.jpg' },
-            { id: 'zJz3l9L8y_E', title: 'FUNDOS IMOBILIÁRIOS (FIIs) para INICIANTES', duration: '19:45', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/zJz3l9L8y_E/hqdefault.jpg' },
-            { id: '7oA_mW21j-w', title: 'RENDA FIXA: O GUIA COMPLETO para Iniciantes!', duration: '33:51', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/7oA_mW21j-w/hqdefault.jpg' },
-            { id: 'Yurej405y_k', title: 'CRIPTOMOEDAS PARA INICIANTES: O GUIA COMPLETO!', duration: '45:01', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/Yurej405y_k/hqdefault.jpg' },
-        ],
+        videos: [],
     },
     {
         id: 'vendas-produtos-digitais',
@@ -58,14 +37,7 @@ export const categories: LearningCategory[] = [
         description: 'Aprenda a vender online, criar ebooks, infoprodutos e aumentar suas vendas',
         icon: 'Cart',
         color: 'blue',
-        videos: [
-            { id: 'kX_mQ6T_t6Q', title: 'KIWIFY PARA INICIANTES 2024 (TUTORIAL COMPLETO)', duration: '22:18', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/kX_mQ6T_t6Q/hqdefault.jpg' },
-            { id: 'J234c9D-XG8', title: 'Como Criar e Vender um PRODUTO DIGITAL em 24h (Passo a Passo)', duration: '14:28', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/J234c9D-XG8/hqdefault.jpg' },
-            { id: 'cZiju38SA0g', title: 'Como CRIAR um INFOPRODUTO do ZERO (Passo a Passo)', duration: '23:01', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/cZiju38SA0g/hqdefault.jpg' },
-            { id: 'iMv30a-Yw_g', title: 'Como criar uma PÁGINA DE VENDAS que vende muito', duration: '30:25', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/iMv30a-Yw_g/hqdefault.jpg' },
-            { id: 'xL5b2bJvG-Y', title: 'COMO FAZER O SEU PRIMEIRO LANÇAMENTO DE PRODUTO DIGITAL', duration: '35:55', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/xL5b2bJvG-Y/hqdefault.jpg' },
-            { id: 'Uu-zvoZSooU', title: 'VENDA QUALQUER COISA PARA QUALQUER UM', duration: '55:40', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/Uu-zvoZSooU/hqdefault.jpg' },
-        ],
+        videos: [],
     },
     {
         id: 'ferramentas-automacao',
@@ -73,14 +45,7 @@ export const categories: LearningCategory[] = [
         description: 'Domine Lovable, n8n, Make, Zapier e outras ferramentas de automação',
         icon: 'Wrench',
         color: 'indigo',
-        videos: [
-            { id: '2P2K0XwB7lw', title: 'N8N - CURSO GRATUITO 2024 (COMPLETO)', duration: '2:10:45', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/2P2K0XwB7lw/hqdefault.jpg' },
-            { id: 'rD8k_5f0cWc', title: 'MAKE (INTEGROMAT) TUTORIAL PARA INICIANTES (COMPLETO)', duration: '50:15', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/rD8k_5f0cWc/hqdefault.jpg' },
-            { id: 'h_fXz6b6fQ0', title: 'TUTORIAL ZAPIER PARA INICIANTES', duration: '15:21', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/h_fXz6b6fQ0/hqdefault.jpg' },
-            { id: '-i_eQeThGgY', title: 'N8N vs MAKE vs ZAPIER: QUAL O MELHOR PARA AUTOMATIZAR TUDO?', duration: '20:00', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/-i_eQeThGgY/hqdefault.jpg' },
-            { id: 'j5i8k-6qCgE', title: 'COMO CRIAR AUTOMAÇÕES COM A API DA OPENAI (GPT-4 TURBO)', duration: '33:39', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/j5i8k-6qCgE/hqdefault.jpg' },
-            { id: 'XoezG6P-Y3o', title: 'Como Automatizar o WHATSAPP com N8N (Guia Completo)', duration: '35:28', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/XoezG6P-Y3o/hqdefault.jpg' },
-        ],
+        videos: [],
     },
     {
         id: 'academia-fitness',
@@ -88,14 +53,7 @@ export const categories: LearningCategory[] = [
         description: 'Treino, nutrição, ganho de massa e emagrecimento para resultados reais',
         icon: 'Dumbbell',
         color: 'yellow',
-        videos: [
-            { id: 'o65g14-VSvY', title: 'COMO GANHAR MASSA MUSCULAR? (GUIA DEFINITIVO)', duration: '20:01', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/o65g14-VSvY/hqdefault.jpg' },
-            { id: '8-x8zDPa2pM', title: 'COMO MONTAR UM TREINO DE HIPERTROFIA COMPLETO (DO ZERO)', duration: '17:33', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/8-x8zDPa2pM/hqdefault.jpg' },
-            { id: 'QomaGg7fxYc', title: 'GUIA COMPLETO DE COMO MONTAR SUA DIETA (DO ZERO!)', duration: '13:01', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/QomaGg7fxYc/hqdefault.jpg' },
-            { id: 'iTuxd2k2-3g', title: 'DIETA PRONTA PARA GANHAR MASSA MUSCULAR (HIPERTROFIA) | Renato Cariani', duration: '12:18', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/iTuxd2k2-3g/hqdefault.jpg' },
-            { id: 'uP1o2o7uC1o', title: 'DIETA PARA EMAGRECER E PERDER BARRIGA RÁPIDO', duration: '12:12', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/uP1o2o7uC1o/hqdefault.jpg' },
-            { id: 'B8a_gQ9yofQ', title: 'Os 5 MELHORES SUPLEMENTOS para GANHAR MASSA MUSCULAR', duration: '14:21', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/B8a_gQ9yofQ/hqdefault.jpg' },
-        ],
+        videos: [],
     },
     {
         id: 'psicologia-desenvolvimento',
@@ -103,13 +61,6 @@ export const categories: LearningCategory[] = [
         description: '48 Leis do Poder, estratégias de guerra, mentalidade vencedora e desenvolvimento pessoal',
         icon: 'Heart',
         color: 'rose',
-        videos: [
-            { id: 'ACJTb15p44k', title: 'AS 48 LEIS DO PODER (RESUMO ANIMADO)', duration: '19:58', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/ACJTb15p44k/hqdefault.jpg' },
-            { id: 'Q8fkplMhOug', title: 'A ARTE DA GUERRA - Sun Tzu (Resumo)', duration: '8:41', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/Q8fkplMhOug/hqdefault.jpg' },
-            { id: 'ZyeZf4f-b-w', title: 'ESTOICISMO: A ARTE DE VIVER (GUIA PARA INICIANTES)', duration: '11:23', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/ZyeZf4f-b-w/hqdefault.jpg' },
-            { id: 'G-Kntk72a_A', title: 'O que pessoas mentalmente fortes fazem? | Eslen Delanogare', duration: '18:50', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/G-Kntk72a_A/hqdefault.jpg' },
-            { id: 'k4pGe-5z7sU', title: 'O PODER DO HÁBITO (Resumo Animado)', duration: '9:07', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/k4pGe-5z7sU/hqdefault.jpg' },
-            { id: '8K0He7o-jcM', title: 'Como VENCER a PROCRASTINAÇÃO (Método Comprovado)', duration: '14:03', platform: 'youtube', thumbnailUrl: 'https://i.ytimg.com/vi/8K0He7o-jcM/hqdefault.jpg' },
-        ],
+        videos: [],
     }
 ];

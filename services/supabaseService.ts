@@ -257,11 +257,6 @@ export const seedInitialVideos = async (categories: LearningCategory[]): Promise
         }))
     );
 
-    if (allVideosToInsert.length === 0) {
-        console.log("No initial videos to seed.");
-        return;
-    }
-
     try {
         // Step 1: Delete all existing videos to ensure a clean slate.
         // This is a destructive operation that resets the content to match `data.ts`.
@@ -275,15 +270,19 @@ export const seedInitialVideos = async (categories: LearningCategory[]): Promise
         }
         console.log("Successfully cleared existing learning videos.");
 
-        // Step 2: Insert the new, curated list of videos.
-        const { error: insertError } = await supabase
-            .from('learning_videos')
-            .insert(allVideosToInsert);
+        // Step 2: Only insert if there are new videos to add.
+        if (allVideosToInsert.length > 0) {
+            const { error: insertError } = await supabase
+                .from('learning_videos')
+                .insert(allVideosToInsert);
 
-        if (insertError) {
-            throw insertError;
+            if (insertError) {
+                throw insertError;
+            }
+            console.log(`Successfully seeded ${allVideosToInsert.length} curated initial videos.`);
+        } else {
+            console.log("No new initial videos to insert. Database is now empty.");
         }
-        console.log(`Successfully seeded ${allVideosToInsert.length} curated initial videos.`);
 
     } catch (error: any) {
         const formattedError = formatSupabaseError(error, 'conteúdo inicial das trilhas');

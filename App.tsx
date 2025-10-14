@@ -215,12 +215,12 @@ const App: React.FC = () => {
         }
         
         // One-time content seeding
-        const isSeeded = localStorage.getItem('arc7hive_content_seeded_v2');
+        const isSeeded = localStorage.getItem('arc7hive_content_seeded_v3');
         if (!isSeeded) {
             try {
-                console.log("Performing one-time content seeding (v2)...");
+                console.log("Performing one-time content seeding (v3)...");
                 await seedInitialVideos(initialCategories);
-                localStorage.setItem('arc7hive_content_seeded_v2', 'true');
+                localStorage.setItem('arc7hive_content_seeded_v3', 'true');
                 console.log("Content seeding complete.");
                 window.dispatchEvent(new CustomEvent('app-notification', { 
                     detail: { type: 'info', message: 'Conteúdo inicial sincronizado com sucesso!' }
