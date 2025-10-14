@@ -8,6 +8,11 @@ export const formatSupabaseError = (error: PostgrestError | Error | null, contex
 
     console.error(`Error with ${context}:`, error);
     
+    // New check for the ON CONFLICT error
+    if (error.message.includes('ON CONFLICT specification')) {
+        return `Erro de Configuração do Banco de Dados: A tabela em "${context}" não possui uma Chave Primária (PRIMARY KEY) ou restrição UNIQUE. Para corrigir, vá ao Editor de Tabelas no Supabase e defina a coluna 'id' como Chave Primária.`;
+    }
+
     if ('code' in error && error.code === 'PGRST205') {
         const tableNameMatch = error.message.match(/'public\.(.*?)'/);
         const tableName = tableNameMatch ? tableNameMatch[1] : context;
@@ -257,17 +262,39 @@ export const seedInitialVideos = async (categories: LearningCategory[]): Promise
         return;
     }
 
-    const { error } = await supabase.from('learning_videos').upsert(allVideosToInsert, {
-        onConflict: 'id',
-        ignoreDuplicates: true,
-    });
+    try {
+        // To work around schemas that may be missing a PRIMARY KEY on the `id` column,
+        // we first fetch all existing video IDs to avoid the `ON CONFLICT` error.
+        const { data: existingVideos, error: selectError } = await supabase
+            .from('learning_videos')
+            .select('id');
 
-    if (error) {
-        console.error("Error seeding initial videos:", error);
-        throw new Error("Falha ao carregar o conteúdo inicial das trilhas de conhecimento.");
+        if (selectError) {
+            // Rethrow and let the higher-level try-catch handle formatting
+            throw selectError;
+        }
+
+        const existingIds = new Set(existingVideos.map(v => v.id));
+        const newVideosToInsert = allVideosToInsert.filter(video => !existingIds.has(video.id));
+
+        if (newVideosToInsert.length === 0) {
+            console.log("All initial videos are already present in the database.");
+            return;
+        }
+
+        // Then, we insert only the videos that are not already in the database.
+        const { error: insertError } = await supabase.from('learning_videos').insert(newVideosToInsert);
+
+        if (insertError) {
+            throw insertError;
+        }
+
+        console.log(`Successfully seeded ${newVideosToInsert.length} new initial videos.`);
+
+    } catch (error: any) {
+        const formattedError = formatSupabaseError(error, 'conteúdo inicial das trilhas');
+        throw new Error(formattedError || "Falha ao carregar o conteúdo inicial das trilhas de conhecimento.");
     }
-
-    console.log(`Successfully seeded/verified ${allVideosToInsert.length} initial videos.`);
 };
 
 

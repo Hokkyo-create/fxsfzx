@@ -1,188 +1,106 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { VideoScript } from '../types';
+import YouTube from 'react-youtube';
+import type { VideoScript, Video } from '../types';
 import Icon from './Icons';
 
 interface StitchedVideoPlayerProps {
     script: VideoScript;
-    videoUrls: string[]; // Can be API URIs or direct placeholder URLs
+    videos: Video[];
 }
 
-const StitchedVideoPlayer: React.FC<StitchedVideoPlayerProps> = ({ script, videoUrls }) => {
+const StitchedVideoPlayer: React.FC<StitchedVideoPlayerProps> = ({ script, videos }) => {
     const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [fetchedVideoBlobs, setFetchedVideoBlobs] = useState<string[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const videoRef = useRef<HTMLVideoElement>(null);
+    const playerRef = useRef<any>(null);
     const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-    // Fetch video blobs since API URIs require an API key
-    useEffect(() => {
-        const fetchVideos = async () => {
-            setIsLoading(true);
-            // Safely get the API key
-            const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
+    const currentVideoId = videos[currentSceneIndex]?.id;
+
+    const speakNarrationForScene = (sceneIndex: number) => {
+        if ('speechSynthesis' in window && script.scenes[sceneIndex]) {
+            window.speechSynthesis.cancel(); // Stop any previous speech
             
-            try {
-                const blobUrls = await Promise.all(
-                    videoUrls.map(async (uri) => {
-                        const isApiUrl = uri.includes('generativelanguage.googleapis.com');
-                        if (isApiUrl && !apiKey) {
-                           console.warn("API_KEY not found, cannot fetch generated video. This is expected in simulation mode.");
-                           // In simulation, the URI is often a direct placeholder URL, so we can just use it.
-                           // If it's a real API URL and we have no key, this fetch will fail, which is handled below.
-                        }
-                        const fetchUrl = isApiUrl && apiKey ? `${uri}&key=${apiKey}` : uri;
-                        const response = await fetch(fetchUrl);
-                        if (!response.ok) {
-                            throw new Error(`Failed to fetch video from ${uri}`);
-                        }
-                        const blob = await response.blob();
-                        return URL.createObjectURL(blob);
-                    })
-                );
-                setFetchedVideoBlobs(blobUrls);
-            } catch (error) {
-                console.error("Error fetching video blobs:", error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        if (videoUrls.length > 0) {
-            fetchVideos();
-        }
-
-        // Cleanup blob URLs on unmount
-        return () => {
-            fetchedVideoBlobs.forEach(URL.revokeObjectURL);
-        };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [videoUrls]);
-
-    // Setup Text-to-Speech
-    useEffect(() => {
-        if ('speechSynthesis' in window && script.fullNarrationScript) {
-            const utterance = new SpeechSynthesisUtterance(script.fullNarrationScript);
+            const utterance = new SpeechSynthesisUtterance(script.scenes[sceneIndex].narration);
             const voices = window.speechSynthesis.getVoices();
-            utterance.voice = voices.find(voice => voice.lang === 'pt-BR') || voices.find(voice => voice.lang.startsWith('pt-')) || voices[0];
-            utterance.pitch = 1;
-            utterance.rate = 1;
-            utterance.volume = 1;
-
-            utterance.onstart = () => {
-                videoRef.current?.play();
-                setIsPlaying(true);
-            };
+            utterance.voice = voices.find(voice => voice.lang === 'pt-BR') || voices[0];
             utterance.onend = () => {
-                setIsPlaying(false);
-                setCurrentSceneIndex(0); 
-                if(videoRef.current) videoRef.current.currentTime = 0;
+                // When narration for a scene ends, we could decide to auto-play the next scene
+                // For now, we let the video `onEnd` handle it for better sync.
             };
-            utterance.onpause = () => {
-                videoRef.current?.pause();
-                setIsPlaying(false);
-            };
-            utterance.onresume = () => {
-                videoRef.current?.play();
-                setIsPlaying(true);
-            };
-            
             utteranceRef.current = utterance;
-            
-            return () => {
-                window.speechSynthesis.cancel();
-            }
+            window.speechSynthesis.speak(utterance);
         }
-    }, [script.fullNarrationScript]);
-
+    };
 
     const handlePlayPause = () => {
-        if (!videoRef.current || !utteranceRef.current) return;
-        
-        if (isPlaying) {
-             window.speechSynthesis.pause();
-        } else {
+        if (!playerRef.current) return;
+
+        const playerState = playerRef.current.getPlayerState();
+        if (playerState === 1) { // Playing
+            playerRef.current.pauseVideo();
+            window.speechSynthesis.pause();
+            setIsPlaying(false);
+        } else { // Paused, ended, etc.
+            playerRef.current.playVideo();
             if (window.speechSynthesis.paused) {
                 window.speechSynthesis.resume();
             } else {
-                window.speechSynthesis.cancel();
-                window.speechSynthesis.speak(utteranceRef.current);
+                speakNarrationForScene(currentSceneIndex);
             }
+            setIsPlaying(true);
         }
     };
 
-    const handleVideoEnded = () => {
-        // Loop the current video if it ends before narration
-        if (videoRef.current) {
-            videoRef.current.currentTime = 0;
-            videoRef.current.play();
+    const handleNextScene = () => {
+        if (currentSceneIndex < videos.length - 1) {
+            setCurrentSceneIndex(currentSceneIndex + 1);
+        } else {
+            // End of the stitched video
+            setIsPlaying(false);
+            window.speechSynthesis.cancel();
+            setCurrentSceneIndex(0);
         }
     };
     
-    useEffect(() => {
-        if (videoRef.current && fetchedVideoBlobs[currentSceneIndex]) {
-            videoRef.current.src = fetchedVideoBlobs[currentSceneIndex];
-            if (isPlaying) {
-                videoRef.current.play().catch(e => console.error("Video play error:", e));
-            }
-        }
-    }, [currentSceneIndex, fetchedVideoBlobs, isPlaying]);
+     const onPlayerReady = (event: any) => {
+        playerRef.current = event.target;
+    };
     
-    // This effect handles advancing scenes based on speech synthesis boundaries
-    useEffect(() => {
-        const utterance = utteranceRef.current;
-        if (!utterance) return;
-        
-        let sceneStartTimes: {charIndex: number, sceneIndex: number}[] = [];
-        let currentIndex = -1;
-        
-        script.scenes.reduce((acc, scene) => {
-            currentIndex++;
-            sceneStartTimes.push({charIndex: acc, sceneIndex: currentIndex});
-            return acc + scene.narration.length;
-        }, 0);
-        
-        const boundaryHandler = (event: SpeechSynthesisEvent) => {
-            const spokenCharIndex = event.charIndex;
-            
-            // Find the current scene based on how many characters have been spoken
-            let currentScene = 0;
-            for(let i = sceneStartTimes.length - 1; i >= 0; i--) {
-                if(spokenCharIndex >= sceneStartTimes[i].charIndex) {
-                    currentScene = sceneStartTimes[i].sceneIndex;
-                    break;
+    const onPlayerStateChange = (event: any) => {
+        if (event.data === 1) { // Playing
+            setIsPlaying(true);
+            if (!window.speechSynthesis.speaking || window.speechSynthesis.paused) {
+                if(window.speechSynthesis.paused) {
+                    window.speechSynthesis.resume();
+                } else {
+                    speakNarrationForScene(currentSceneIndex);
                 }
             }
-            
-            if (currentScene !== currentSceneIndex) {
-                setCurrentSceneIndex(currentScene);
-            }
+        } else if (event.data === 2) { // Paused
+            setIsPlaying(false);
+            window.speechSynthesis.pause();
+        } else if (event.data === 0) { // Ended
+            handleNextScene();
         }
-        
-        utterance.addEventListener('boundary', boundaryHandler);
-        
-        return () => {
-            utterance.removeEventListener('boundary', boundaryHandler);
+    };
+    
+    // Effect to handle changing scenes
+    useEffect(() => {
+        if(playerRef.current && isPlaying) {
+             speakNarrationForScene(currentSceneIndex);
         }
-        
-    }, [script, currentSceneIndex]);
-
-
-    if (isLoading) {
-        return <div className="text-center text-gray-400 p-8">Carregando vídeos...</div>;
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentSceneIndex]);
 
     return (
-        <div className="w-full">
-            <div className="aspect-video bg-black rounded-lg overflow-hidden relative group">
-                <video
-                    ref={videoRef}
-                    className="w-full h-full object-cover"
-                    onEnded={handleVideoEnded}
-                    src={fetchedVideoBlobs[0]}
-                    muted // Narration is handled by SpeechSynthesis
-                    playsInline
-                    loop
+        <div className="w-full h-full flex flex-col">
+            <div className="aspect-video bg-black rounded-lg overflow-hidden relative group flex-shrink-0">
+                <YouTube
+                    videoId={currentVideoId}
+                    opts={{ width: '100%', height: '100%', playerVars: { autoplay: 0, controls: 0, modestbranding: 1, rel: 0 } }}
+                    onReady={onPlayerReady}
+                    onStateChange={onPlayerStateChange}
+                    className="w-full h-full"
                 />
                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <button onClick={handlePlayPause} className="w-16 h-16 bg-black/50 rounded-full flex items-center justify-center text-white backdrop-blur-sm">
@@ -190,9 +108,15 @@ const StitchedVideoPlayer: React.FC<StitchedVideoPlayerProps> = ({ script, video
                     </button>
                 </div>
             </div>
-            <div className="mt-4 p-4 bg-gray-900/50 rounded-lg">
-                <h3 className="font-display text-lg text-brand-red mb-2">Roteiro e Narração</h3>
-                <p className="text-sm text-gray-300 max-h-24 overflow-y-auto pr-2">{script.fullNarrationScript}</p>
+            <div className="mt-4 p-4 bg-gray-900/50 rounded-lg flex-grow flex flex-col overflow-hidden">
+                <h3 className="font-display text-lg text-brand-red mb-2 flex-shrink-0">Cena Atual: {currentSceneIndex + 1} / {videos.length}</h3>
+                <div className="text-sm text-gray-300 flex-grow overflow-y-auto pr-2">
+                   {script.scenes.map((scene, index) => (
+                       <p key={index} className={`${index === currentSceneIndex ? 'font-bold text-white' : 'text-gray-400'}`}>
+                           {scene.narration}
+                       </p>
+                   ))}
+                </div>
             </div>
         </div>
     );

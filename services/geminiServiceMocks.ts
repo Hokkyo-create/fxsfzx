@@ -101,26 +101,13 @@ export const getMockEbookQuiz = (): QuizQuestion[] => {
 export const getMockVideoScript = (): VideoScript => {
     return {
         scenes: [
-            { narration: "Este é um vídeo de simulação.", prompt: "a computer screen with code" },
-            { narration: "Ele foi gerado porque a cota da API foi excedida.", prompt: "a warning sign with an exclamation mark" },
-            { narration: "Ele usa vídeos de exemplo para continuar funcionando.", prompt: "a library of video tapes" }
+            { narration: "Este é um vídeo de simulação.", prompt: "tela de computador com código" },
+            { narration: "Ele foi gerado porque a cota da API foi excedida.", prompt: "sinal de alerta com ponto de exclamação" },
+            { narration: "Ele usa vídeos de exemplo para continuar funcionando.", prompt: "biblioteca de fitas de vídeo" }
         ],
         fullNarrationScript: "Este é um vídeo de simulação. Ele foi gerado porque a cota da API foi excedida. Ele usa vídeos de exemplo para continuar funcionando."
     };
 };
-
-export const getMockVideoOperation = () => {
-    const randomPlaceholder = placeholderVideos[Math.floor(Math.random() * placeholderVideos.length)];
-    return Promise.resolve({
-        done: true,
-        response: {
-            generatedVideos: [{
-                video: { uri: randomPlaceholder }
-            }]
-        }
-    });
-};
-
 
 // --- Schemas for JSON parsing (used by real calls, but good to keep mocks consistent) ---
 export const quizSchema = {

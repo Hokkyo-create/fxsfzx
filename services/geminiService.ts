@@ -1,9 +1,12 @@
-// services/geminiService.ts
-import { GoogleGenAI, Type, GenerateContentResponse, GenerateImagesResponse, Operation } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse, GenerateImagesResponse } from "@google/genai";
 import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video } from "../types";
 import * as mockService from './geminiServiceMocks';
 
 let isGeminiQuotaExceeded = false;
+
+// --- Session-level Cache for Video Searches ---
+const videoSearchCache = new Map<string, { videos: Video[], timestamp: number }>();
+const CACHE_EXPIRATION_MS = 5 * 60 * 1000; // 5 minutes
 
 class QuotaExceededError extends Error {
     constructor(message: string) {
@@ -97,51 +100,64 @@ interface VideoProvider {
 const parseInvidiousVideoResponse = (data: any, existingVideoIds: Set<string>): Video[] => {
     if (!Array.isArray(data)) return [];
     return data
-        .filter(item => item.type === 'video' && item.videoId && !existingVideoIds.has(item.videoId) && item.lengthSeconds > 300) // 5 minutes minimum
-        .map((item): Video => ({
-            id: item.videoId,
-            title: item.title,
-            duration: formatSecondsDuration(item.lengthSeconds),
-            thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || item.videoThumbnails?.[0]?.url || '',
-            platform: 'youtube',
-        }))
-        .filter(video => video.thumbnailUrl);
+        .map((item: any): Partial<Video> => {
+            if (item.type !== 'video' || !item.videoId || !item.title) {
+                return {};
+            }
+            return {
+                id: item.videoId,
+                title: item.title,
+                duration: formatSecondsDuration(item.lengthSeconds),
+                thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+                platform: 'youtube',
+            };
+        })
+        .filter((video): video is Video => {
+             return !!video.id && !existingVideoIds.has(video.id) && !!video.title && !!video.thumbnailUrl && video.thumbnailUrl.startsWith('http');
+        });
 };
 
 const parsePipedVideoResponse = (data: any, existingVideoIds: Set<string>): Video[] => {
     if (!data.items || !Array.isArray(data.items)) return [];
     return data.items
-        .filter((item: any) => {
-            if (item.type !== 'stream' || !item.url || item.duration <= 300) return false;
-            const videoId = item.url.split('v=')[1];
-            return videoId && !existingVideoIds.has(videoId);
+        .map((item: any): Partial<Video> => {
+            if (item.type !== 'stream' || !item.url || !item.title) return {};
+            const videoIdMatch = item.url.match(/v=([^&]+)/);
+            if (!videoIdMatch || !videoIdMatch[1]) return {};
+            
+            const videoId = videoIdMatch[1];
+            return {
+                id: videoId,
+                title: item.title,
+                duration: formatSecondsDuration(item.duration),
+                thumbnailUrl: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                platform: 'youtube',
+            };
         })
-        .map((item: any): Video => ({
-            id: item.url.split('v=')[1],
-            title: item.title,
-            duration: formatSecondsDuration(item.duration),
-            thumbnailUrl: item.thumbnail,
-            platform: 'youtube',
-        }))
-        .filter(video => video.thumbnailUrl);
+        .filter((video): video is Video => {
+            return !!video.id && !existingVideoIds.has(video.id) && !!video.title && !!video.thumbnailUrl && video.thumbnailUrl.startsWith('http');
+        });
 };
 
-// Curated list of public instances
+// Curated list of public instances (Updated for reliability)
 const invidiousApiInstances = [
-    'https://yewtu.be',
-    'https://vid.puffyan.us',
-    'https://invidious.kavin.rocks',
-    'https://iv.ggtyler.dev',
-    'https://invidious.lunar.icu',
+    'https://invidious.no-logs.com',
+    'https://vid.priv.au',
+    'https://iv.melmac.space',
+    'https://invidious.privacydev.net',
     'https://inv.n8p.xyz',
-    'https://invidious.incogniweb.net',
+    'https://invidious.drgns.space',
 ];
 
 const pipedApiInstances = [
     'https://pipedapi.kavin.rocks',
-    'https://piped-api.online.hifis.dev',
     'https://pipedapi.smnz.de',
+    'https://pipedapi.adminforge.de',
+    'https://pipedapi.moomoo.me',
+    'https://api-piped.mha.fi',
+    'https://piped-api.lunar.icu',
 ];
+
 
 const videoProviders: VideoProvider[] = [
     ...invidiousApiInstances.map(instance => ({
@@ -195,25 +211,34 @@ const sanitizeTitle = (title: string): string => {
 const parseInvidiousMusicResponse = (data: any): YouTubeTrack[] => {
     if (!Array.isArray(data)) return [];
     return data
-        .filter((item: any) => item.type === 'video' && item.videoId && item.title)
-        .map((item: any): YouTubeTrack => ({
-            id: item.videoId,
-            title: sanitizeTitle(item.title),
-            artist: item.author,
-            thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || item.videoThumbnails?.[0]?.url || '',
-        }));
+        .map((item: any): Partial<YouTubeTrack> => {
+            if (item.type !== 'video' || !item.videoId || !item.title) return {};
+            return {
+                id: item.videoId,
+                title: sanitizeTitle(item.title),
+                artist: item.author,
+                thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+            };
+        })
+        .filter((track): track is YouTubeTrack => !!track.id && !!track.title && !!track.thumbnailUrl && track.thumbnailUrl.startsWith('http'));
 };
 
 const parsePipedMusicResponse = (data: any): YouTubeTrack[] => {
     if (!data.items || !Array.isArray(data.items)) return [];
     return data.items
-        .filter((item: any) => item.type === 'stream' && item.url && item.title)
-        .map((item: any): YouTubeTrack => ({
-            id: item.url.split('v=')[1],
-            title: sanitizeTitle(item.title),
-            artist: item.uploaderName,
-            thumbnailUrl: item.thumbnail,
-        }));
+        .map((item: any): Partial<YouTubeTrack> => {
+            if (item.type !== 'stream' || !item.url || !item.title) return {};
+            const videoIdMatch = item.url.match(/v=([^&]+)/);
+            if (!videoIdMatch || !videoIdMatch[1]) return {};
+            const videoId = videoIdMatch[1];
+            return {
+                id: videoId,
+                title: sanitizeTitle(item.title),
+                artist: item.uploaderName,
+                thumbnailUrl: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            };
+        })
+        .filter((track): track is YouTubeTrack => !!track.id && !!track.title && !!track.thumbnailUrl && track.thumbnailUrl.startsWith('http'));
 };
 
 
@@ -254,31 +279,71 @@ async function searchMusicFromProviders(searchQuery: string): Promise<YouTubeTra
     throw new Error('Todos os provedores de busca de música falharam.');
 }
 
-
-const categorySearchQueries: Record<string, string> = {
-    'Inteligência Artificial': '"Inteligência Artificial" curso completo | "machine learning" para iniciantes | "redes neurais" tutorial | "deep learning" explicado | "chatgpt" para negócios | "midjourney" tutorial',
-    'Marketing Digital': '"marketing digital" para afiliados | "tráfego pago" curso | "gestor de tráfego" | "google ads" passo a passo | "facebook ads" para iniciantes | "seo para iniciantes" | "copywriting" curso',
-    'Mercado Financeiro': '"day trade" para iniciantes | "análise técnica" curso | "investir em ações" | "como investir em criptomoedas" | "educação financeira" | "swing trade" | "price action"',
-    'Vendas e Produtos Digitais': '"como vender infoprodutos" | "lançamento de produto digital" | "hotmart" como vender | "dropshipping" passo a passo | "PLR" o que é | "kiwify" tutorial | "estratégia de vendas online"',
-    'Ferramentas e Automação': '"automação n8n" tutorial | "make.com" automação | "zapier" para iniciantes | "automação de marketing" ferramentas | "lovable" automação',
-    'Academia e Fitness': '"treino de hipertrofia" | "como ganhar massa muscular" | "dieta para emagrecer" | "treino ABC" | "calistenia" para iniciantes | "jejum intermitente" | "melhores suplementos"',
-    'Psicologia e Desenvolvimento': '"48 leis do poder" resumo | "estoicismo" na prática | "sun tzu a arte da guerra" explicado | "inteligência emocional" daniel goleman | "o poder do hábito" | "leis da natureza humana" | "comunicação assertiva"',
-};
-
-
 // --- Main Exported Service Functions ---
+
+async function generateVideoSearchQuery(categoryTitle: string, existingTitles: string[]): Promise<string> {
+    if (existingTitles.length === 0) {
+        return `"${categoryTitle}" tutorial | "${categoryTitle}" curso completo | "${categoryTitle}" aula`;
+    }
+
+    const titleSamples = existingTitles.slice(0, 5).map(t => `- ${t}`).join('\n');
+    
+    const prompt = `
+    Com base nos seguintes títulos de vídeos existentes na categoria "${categoryTitle}":
+    ${titleSamples}
+
+    Gere uma string de busca para o YouTube para encontrar vídeos SIMILARES e de alta qualidade em Português do Brasil.
+    A string de busca deve:
+    1. Usar o operador "|" para separar múltiplos termos de busca.
+    2. Conter entre 5 e 7 termos de busca variados, mas relevantes.
+    3. Focar em encontrar conteúdo educacional e aprofundado (tutoriais, cursos, aulas completas).
+    4. Evitar termos que resultem em vídeos curtos (shorts), vlogs ou conteúdo de baixa qualidade.
+    5. Retorne APENAS a string de busca, sem nenhuma outra formatação ou texto.
+
+    Exemplo de retorno: "machine learning para iniciantes" | "redes neurais tutorial pt-br" | "curso deep learning completo"
+    `;
+
+    try {
+        const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                systemInstruction: "Você é um especialista em SEO para YouTube que cria strings de busca otimizadas para encontrar conteúdo educacional em português do Brasil.",
+                temperature: 0.5,
+            }
+        }), 'generateVideoSearchQuery');
+        
+        return response.text.replace(/["`]/g, '').trim();
+    } catch (error) {
+        console.error("Failed to generate video search query with AI, using fallback.", error);
+        return `"${categoryTitle}" tutorial | "${categoryTitle}" curso completo | "${categoryTitle}" aula`;
+    }
+}
+
 
 export const findMoreVideos = async (categoryTitle: string, existingVideos: Video[]): Promise<Video[]> => {
     const existingVideoIds = new Set(existingVideos.map(v => v.id));
+    const cacheKey = categoryTitle;
 
-    const specificQuery = categorySearchQueries[categoryTitle];
-    const genericQuery = `"${categoryTitle}" tutorial | "${categoryTitle}" curso`;
-    const searchQuery = specificQuery ? `${specificQuery} | ${genericQuery}` : genericQuery;
-    
-    console.log(`Searching with providers for: ${searchQuery}`);
+    const cachedEntry = videoSearchCache.get(cacheKey);
+    if (cachedEntry && (Date.now() - cachedEntry.timestamp < CACHE_EXPIRATION_MS)) {
+        const newVideosFromCache = cachedEntry.videos.filter(v => !existingVideoIds.has(v.id));
+        if (newVideosFromCache.length > 0) {
+            console.log(`Using cached results for: ${cacheKey}`);
+            return newVideosFromCache.sort(() => 0.5 - Math.random()).slice(0, 10);
+        }
+        console.log(`Cache for ${cacheKey} is stale (no new videos). Fetching fresh results.`);
+    }
+
+    const existingTitles = existingVideos.map(v => v.title);
+    const searchQuery = await generateVideoSearchQuery(categoryTitle, existingTitles);
+
+    console.log(`Searching with AI-generated query: "${searchQuery}"`);
 
     try {
         const foundVideos = await searchVideosFromProviders(searchQuery, existingVideoIds);
+        
+        videoSearchCache.set(cacheKey, { videos: foundVideos, timestamp: Date.now() });
         
         console.log(`Found ${foundVideos.length} total new videos.`);
         return foundVideos.sort(() => 0.5 - Math.random()).slice(0, 10);
@@ -287,6 +352,18 @@ export const findMoreVideos = async (categoryTitle: string, existingVideos: Vide
         console.error("An unexpected error occurred during the video provider search:", error);
         window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Serviço de busca de vídeo indisponível no momento.' }}));
         return [];
+    }
+};
+
+export const searchYouTubeVideos = async (query: string): Promise<Video[]> => {
+    try {
+        return await searchVideosFromProviders(query, new Set());
+    } catch (error) {
+        console.error("An unexpected error occurred during the YouTube video search:", error);
+        if (error instanceof Error) {
+            throw new Error(`Busca de vídeos indisponível: ${error.message}`);
+        }
+        throw new Error("Falha ao se comunicar com o serviço de busca de vídeos.");
     }
 };
 
@@ -467,7 +544,7 @@ export const generateVideoScript = async (project: Project): Promise<VideoScript
             const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}`;
             return ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Crie um roteiro para um vídeo curto (aproximadamente 1 minuto) baseado no conteúdo do ebook a seguir. Divida o roteiro em 3 a 5 cenas. Para cada cena, forneça um texto de narração conciso e um prompt de imagem (em inglês) para gerar uma cena de vídeo visualmente atraente. No final, forneça o roteiro de narração completo. \n\nEBOOK:\n${content.substring(0, 8000)}`,
+                contents: `Crie um roteiro para um vídeo curto (aproximadamente 1 minuto) baseado no conteúdo do ebook a seguir. Divida o roteiro em 3 a 5 cenas. Para cada cena, forneça um texto de narração conciso e um prompt de busca para encontrar um vídeo de estoque relevante no YouTube (em português). No final, forneça o roteiro de narração completo. \n\nEBOOK:\n${content.substring(0, 8000)}`,
                 config: { responseMimeType: "application/json", responseSchema: mockService.videoScriptSchema }
             });
         }, 'generateVideoScript');
@@ -475,32 +552,6 @@ export const generateVideoScript = async (project: Project): Promise<VideoScript
     } catch (error) {
         if (error instanceof QuotaExceededError) {
             return mockService.getMockVideoScript();
-        }
-        throw error;
-    }
-};
-
-export const generateVideo = async (prompt: string): Promise<Operation> => {
-    try {
-        return await handleApiCall<Operation>(() => ai.models.generateVideos({
-            model: 'veo-2.0-generate-001',
-            prompt: prompt,
-            config: { numberOfVideos: 1 }
-        }), 'generateVideo');
-    } catch (error) {
-        if (error instanceof QuotaExceededError) {
-            return mockService.getMockVideoOperation();
-        }
-        throw error;
-    }
-};
-
-export const checkVideoOperationStatus = async (operation: any): Promise<Operation> => {
-    try {
-        return await handleApiCall<Operation>(() => ai.operations.getVideosOperation({ operation: operation }), 'checkVideoOperationStatus');
-    } catch (error) {
-        if (error instanceof QuotaExceededError) {
-            return mockService.getMockVideoOperation();
         }
         throw error;
     }
