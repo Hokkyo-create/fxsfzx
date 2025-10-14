@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Cpath d='M16 52 h64 l24 -24 h72 v132 H16 z' fill='%23141414' stroke='%23E50914' stroke-width='6' stroke-linejoin='round'/%3E%3Ctext x='50%25' y='58%25' dominant-baseline='central' text-anchor='middle' font-size='120' font-family='Bebas Neue, sans-serif' fill='%23E50914' dy='.1em' style='text-shadow: 0 0 8px %23E50914;'%3E7%3C/text%3E%3C/svg%3E" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w.org/2000/svg' viewBox='0 0 192 192'%3E%3Cpath d='M16 52 h64 l24 -24 h72 v132 H16 z' fill='%23141414' stroke='%23E50914' stroke-width='6' stroke-linejoin='round'/%3E%3Ctext x='50%25' y='58%25' dominant-baseline='central' text-anchor='middle' font-size='120' font-family='Bebas Neue, sans-serif' fill='%23E50914' dy='.1em' style='text-shadow: 0 0 8px %23E50914;'%3E7%3C/text%3E%3C/svg%3E" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ARC7HIVE | Projeto Evolution</title>
     <link rel="manifest" href="/manifest.json" />
@@ -48,6 +48,53 @@
           z-index: 9999;
           opacity: 0.2;
         }
+
+        /* Custom Volume Slider Styles */
+        input[type=range].volume-slider {
+            -webkit-appearance: none;
+            background: transparent;
+            cursor: pointer;
+            width: 100%;
+        }
+        /* Track */
+        input[type=range].volume-slider::-webkit-slider-runnable-track {
+            background: rgba(0, 0, 0, 0.4);
+            height: 0.25rem;
+            border-radius: 0.5rem;
+        }
+        input[type=range].volume-slider::-moz-range-track {
+            background: rgba(0, 0, 0, 0.4);
+            height: 0.25rem;
+            border-radius: 0.5rem;
+        }
+        /* Thumb */
+        input[type=range].volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            margin-top: -6px; /* Position thumb correctly */
+            height: 1rem;
+            width: 1rem;
+            background: #E50914;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 8px #E50914;
+            transition: transform 0.2s ease;
+        }
+        input[type=range].volume-slider:hover::-webkit-slider-thumb {
+            transform: scale(1.1);
+        }
+        input[type=range].volume-slider::-moz-range-thumb {
+            height: 1rem;
+            width: 1rem;
+            background: #E50914;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 8px #E50914;
+            transition: transform 0.2s ease;
+        }
+        input[type=range].volume-slider:hover::-moz-range-thumb {
+            transform: scale(1.1);
+        }
+
 
         /* PDF Export Styles */
         .pdf-export-mode {
@@ -127,6 +174,9 @@
               'logo-glitch-scan': 'logoGlitchScan 2s forwards ease-in-out',
               'stagger-in': 'staggerIn 0.6s ease-out forwards',
               'marquee': 'marquee 20s linear infinite',
+              'player-pulse': 'playerPulse 3s infinite ease-in-out',
+              'player-panel-in': 'playerPanelIn 0.3s ease-out forwards',
+              'player-panel-out': 'playerPanelOut 0.3s ease-in forwards',
             },
             keyframes: {
               'pan-grid': {
@@ -160,6 +210,18 @@
               glow: {
                 '0%, 100%': { filter: 'brightness(1) drop-shadow(0 0 4px #E50914)', opacity: '0.8' },
                 '50%': { filter: 'brightness(1.6) drop-shadow(0 0 15px #E50914)', opacity: '1' },
+              },
+               playerPulse: {
+                '0%, 100%': { boxShadow: '0 0 0 0 rgba(229, 9, 20, 0.5)' },
+                '50%': { boxShadow: '0 0 20px 10px rgba(229, 9, 20, 0)' },
+              },
+              playerPanelIn: {
+                  '0%': { opacity: 0, transform: 'scale(0.95) translateY(10px)' },
+                  '100%': { opacity: 1, transform: 'scale(1) translateY(0)' },
+              },
+              playerPanelOut: {
+                  '0%': { opacity: 1, transform: 'scale(1) translateY(0)' },
+                  '100%': { opacity: 0, transform: 'scale(0.95) translateY(10px)' },
               },
               textGlitch: {
                   '0%': { transform: 'translate(0, 0) skew(0deg)', opacity: 1 },

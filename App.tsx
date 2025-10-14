@@ -63,6 +63,7 @@ const App: React.FC = () => {
     const [playlist, setPlaylist] = useState<Song[]>([]);
     const [playlistError, setPlaylistError] = useState<string | null>(null);
     const [currentTrackInfo, setCurrentTrackInfo] = useState<{ title: string; artist: string } | null>(null);
+    const [isRadioActive, setIsRadioActive] = useState(false);
     
     const isInitialProgressLoad = useRef(true); // To prevent writing progress back on initial load
 
@@ -253,6 +254,7 @@ const App: React.FC = () => {
         setSelectedProject(null);
         setGeneratingProjectConfig(null);
         setLearningCategories(initialCategories);
+        setIsRadioActive(false); // Deactivate radio on logout
     };
     
     const handleToggleAdminPanel = () => setIsAdminPanelOpen(prev => !prev);
@@ -488,7 +490,16 @@ const App: React.FC = () => {
                 />
             )}
             {showChatbot && <Chatbot />}
-            {showMusicPlayer && <MusicPlayer user={currentUser} playlist={playlist} error={playlistError} onTrackChange={handleTrackChange} />}
+            {showMusicPlayer && (
+                <MusicPlayer 
+                    user={currentUser} 
+                    playlist={playlist} 
+                    error={playlistError} 
+                    onTrackChange={handleTrackChange}
+                    isRadioActive={isRadioActive}
+                    onToggleRadioActive={() => setIsRadioActive(prev => !prev)}
+                />
+            )}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
                 <AdminPanel onClose={handleToggleAdminPanel} />
             )}
