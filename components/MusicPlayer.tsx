@@ -17,6 +17,7 @@ interface MusicPlayerProps {
     user: User;
     playlist: Song[];
     error: string | null;
+    onTrackChange: (track: { title: string; artist: string } | null) => void;
 }
 
 const formatTime = (time: number) => {
@@ -81,7 +82,7 @@ const UploadSongModal: React.FC<{onClose: () => void}> = ({ onClose }) => {
 }
 
 
-const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error }) => {
+const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrackChange }) => {
     const [mode, setMode] = useState<'playlist' | 'youtube'>('playlist');
     const [youtubeTrack, setYoutubeTrack] = useState<YouTubeTrack | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -116,6 +117,15 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error }) => {
 
     // --- State Sync & Listeners ---
     
+    // Effect to notify parent component about track changes for marquee
+    useEffect(() => {
+        if (isPlaying && currentTrack?.title) {
+            onTrackChange({ title: currentTrack.title, artist: currentTrack.artist || 'Rádio Colaborativa' });
+        } else {
+            onTrackChange(null);
+        }
+    }, [isPlaying, currentTrack, onTrackChange]);
+
     // Shared Radio State Listener
     useEffect(() => {
         const unsubscribe = setupRadioStateListener((state, err) => {

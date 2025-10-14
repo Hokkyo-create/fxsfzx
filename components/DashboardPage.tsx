@@ -20,6 +20,7 @@ interface DashboardPageProps {
     onOpenProfileModal: () => void;
     installPrompt: Event | null;
     nextVideoInfo: NextVideoInfo | null;
+    currentTrackInfo: { title: string; artist: string } | null;
 }
 
 const Widget: React.FC<{ title: string; children: React.ReactNode, className?: string, style?: React.CSSProperties }> = ({ title, children, className = '', style }) => (
@@ -52,6 +53,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     onOpenProfileModal,
     installPrompt,
     nextVideoInfo,
+    currentTrackInfo,
 }) => {
     const [showIosInstallMessage, setShowIosInstallMessage] = useState(false);
 
@@ -73,11 +75,22 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         <div className="min-h-screen bg-transparent text-white font-sans flex flex-col">
             {/* Taskbar Header */}
             <header className="bg-darker/80 backdrop-blur-lg border-b border-gray-900/50 sticky top-0 z-30 flex-shrink-0 animate-fade-in">
-                <div className="container mx-auto px-4 sm:px-6 py-2 flex justify-between items-center">
-                    <div className="text-2xl font-display tracking-widest text-white cursor-pointer hover:text-brand-red transition-colors [text-shadow:_0_0_8px_#E50914] hover:[text-shadow:_0_0_12px_#E50914]">
+                <div className="container mx-auto px-4 sm:px-6 py-2 flex justify-between items-center gap-4">
+                    <div className="text-2xl font-display tracking-widest text-white cursor-pointer hover:text-brand-red transition-colors [text-shadow:_0_0_8px_#E50914] hover:[text-shadow:_0_0_12px_#E50914] flex-shrink-0">
                         ARC<span className="text-brand-red">7</span>HIVE
                     </div>
-                    <div className="flex items-center gap-1 sm:gap-2">
+
+                    <div className="flex-grow min-w-0 overflow-hidden hidden md:block mx-4">
+                        {currentTrackInfo && (
+                            <div className="animate-marquee whitespace-nowrap">
+                                <span className="text-gray-400 font-mono text-sm">
+                                    <span className="text-brand-red font-bold">♪ NOW PLAYING:</span> {currentTrackInfo.title} — {currentTrackInfo.artist}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                          {canInstall && (
                             <button
                                 onClick={handleInstallClick}

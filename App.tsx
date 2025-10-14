@@ -62,6 +62,7 @@ const App: React.FC = () => {
     // Music Player state
     const [playlist, setPlaylist] = useState<Song[]>([]);
     const [playlistError, setPlaylistError] = useState<string | null>(null);
+    const [currentTrackInfo, setCurrentTrackInfo] = useState<{ title: string; artist: string } | null>(null);
     
     const isInitialProgressLoad = useRef(true); // To prevent writing progress back on initial load
 
@@ -356,6 +357,10 @@ const App: React.FC = () => {
         }
     }, []);
 
+    const handleTrackChange = useCallback((track: { title: string; artist: string } | null) => {
+        setCurrentTrackInfo(track);
+    }, []);
+
     const totalVideos = useMemo(() => learningCategories.reduce((acc, cat) => acc + cat.videos.length, 0), [learningCategories]);
     const completedVideos = watchedVideos.size;
     const overallProgress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
@@ -464,6 +469,7 @@ const App: React.FC = () => {
                 onOpenProfileModal={() => setIsProfileModalOpen(true)}
                 installPrompt={installPrompt}
                 nextVideoInfo={nextVideoInfo}
+                currentTrackInfo={currentTrackInfo}
             />
         );
     };
@@ -482,7 +488,7 @@ const App: React.FC = () => {
                 />
             )}
             {showChatbot && <Chatbot />}
-            {showMusicPlayer && <MusicPlayer user={currentUser} playlist={playlist} error={playlistError} />}
+            {showMusicPlayer && <MusicPlayer user={currentUser} playlist={playlist} error={playlistError} onTrackChange={handleTrackChange} />}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
                 <AdminPanel onClose={handleToggleAdminPanel} />
             )}

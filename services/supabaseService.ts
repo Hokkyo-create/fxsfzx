@@ -2,6 +2,16 @@ import { supabase } from '../supabaseClient';
 import type { MeetingMessage, OnlineUser, Project, Song, User, Video, LearningCategory, RadioState } from '../types';
 import type { RealtimeChannel, PostgrestError, StorageError } from '@supabase/supabase-js';
 
+// Helper function to sanitize filenames for storage
+const sanitizeFileName = (fileName: string): string => {
+  // Replace spaces and other problematic characters with underscores for safety
+  const withUnderscores = fileName.replace(/[\s&?#%]/g, '_');
+  // Remove any remaining characters that are not standard for file names
+  const sanitized = withUnderscores.replace(/[^a-zA-Z0-9_.-]/g, '');
+  return sanitized;
+};
+
+
 // --- Centralized Error Formatting ---
 export const formatSupabaseError = (error: PostgrestError | Error | null, context: string): string | null => {
     if (!error) return null;
@@ -368,7 +378,8 @@ export const updateUserProgress = async (userName: string, watchedVideos: Set<st
 export const uploadSong = async (file: File, title: string, artist: string): Promise<void> => {
     if (!file.type.startsWith('audio/')) throw new Error("File is not an audio type.");
 
-    const storagePath = `public/${Date.now()}_${file.name}`;
+    const sanitizedFileName = sanitizeFileName(file.name);
+    const storagePath = `public/${Date.now()}_${sanitizedFileName}`;
     
     try {
         const { error: uploadError } = await supabase.storage.from('music').upload(storagePath, file);
