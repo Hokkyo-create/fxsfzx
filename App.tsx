@@ -1,130 +1,96 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { users, categories as initialCategoriesData } from './data';
-import type { User, LearningCategory, Video, NextVideoInfo, MeetingMessage, OnlineUser, Project, ProjectGenerationConfig, Notification, Song } from './types';
-import * as supabaseService from './services/supabaseService';
-import * as firebaseService from './services/firebaseService';
 
+import React, { useState, useEffect, useCallback } from 'react';
+import type { User, LearningCategory, NextVideoInfo, Video, Project, MeetingMessage, OnlineUser, Notification, Song } from './types';
+import { categories as initialCategories, users } from './data';
+
+// --- Page Components ---
 import LoginPage from './components/LoginPage';
 import WelcomeScreen from './components/WelcomeScreen';
 import DashboardPage from './components/DashboardPage';
-import VideoPlayerPage from './components/VideoPlayerPage';
+// Fix: The file name is Header.tsx but it contains the MeetingPage component.
 import MeetingPage from './components/Header';
+import VideoPlayerPage from './components/VideoPlayerPage';
 import ProjectsPage from './components/ProjectsPage';
 import ProjectViewerPage from './components/ProjectViewerPage';
-import CreateProjectModal from './components/CreateProjectModal';
-import ProjectGenerationPage from './components/ProjectGenerationPage';
+
+// --- UI Components & Modals ---
+import AdminPanel from './components/AdminPanel';
+import ProfileModal from './components/ProfileModal';
+import MusicPlayer from './components/MusicPlayer';
 import Chatbot from './components/Chatbot';
 import NotificationBanner from './components/NotificationBanner';
-import ProfileModal from './components/ProfileModal';
-import AdminPanel from './components/AdminPanel';
-import MusicPlayer from './components/MusicPlayer';
 
-type Page = 'login' | 'welcome' | 'dashboard' | 'videos' | 'meeting' | 'projects' | 'project-viewer' | 'project-generation';
+// --- Services ---
+import * as firebaseService from './services/firebaseService';
+import * as supabaseService from './services/supabaseService';
+
 
 const App: React.FC = () => {
-    // Authentication & Navigation
+    // --- App State ---
+    const [appState, setAppState] = useState<'login' | 'welcome' | 'dashboard'>('login');
     const [user, setUser] = useState<User | null>(null);
-    const [page, setPage] = useState<Page>('login');
+    const [page, setPage] = useState<'dashboard' | 'videos' | 'projects' | 'meeting' | 'project-viewer'>('dashboard');
     const [pageData, setPageData] = useState<any>(null);
-    const [isLoading, setIsLoading] = useState(true);
 
-    // Modals & Overlays
-    const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
+    // --- Data State ---
+    const [categories, setCategories] = useState<LearningCategory[]>(initialCategories);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
+    const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
+    const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+    const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+    const [meetingError, setMeetingError] = useState<string | null>(null);
+    const [playlist, setPlaylist] = useState<Song[]>([]);
+    const [nowPlaying, setNowPlaying] = useState<{ title: string; artist: string } | null>(null);
+    const [musicError, setMusicError] = useState<string | null>(null);
+
+    // --- UI Modals & Popups State ---
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [isMusicPlayerOpen, setIsMusicPlayerOpen] = useState(false);
     const [notification, setNotification] = useState<Notification | null>(null);
 
-    // Data State
-    const [categories, setCategories] = useState<LearningCategory[]>(initialCategoriesData);
-    const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [isLoadingProjects, setIsLoadingProjects] = useState(true);
-    const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
-    const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-    const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
-    const [meetingError, setMeetingError] = useState<string | null>(null);
-    
-    // Music Player State
-    const [playlist, setPlaylist] = useState<Song[]>([]);
-    const [playlistError, setPlaylistError] = useState<string | null>(null);
-    const [nowPlaying, setNowPlaying] = useState<{ title: string; artist: string } | null>(null);
-
     // --- Effects ---
 
-    // Initial load: Check for logged in user and load watched videos
+    // Load saved state from localStorage
     useEffect(() => {
-        try {
-            const savedUserJson = localStorage.getItem('arc7hive_user');
-            if (savedUserJson) {
-                const savedUser: User = JSON.parse(savedUserJson);
-                const fullUser = users.find(u => u.name === savedUser.name);
-                if (fullUser) {
-                    setUser({ ...fullUser, avatarUrl: savedUser.avatarUrl || fullUser.avatarUrl });
-                    setPage('dashboard');
-                }
-            }
+        const savedUser = localStorage.getItem('arc7hive_user');
+        if (savedUser) {
+            const parsedUser = JSON.parse(savedUser);
+            const fullUser = users.find(u => u.name === parsedUser.name) || parsedUser;
+            setUser(fullUser);
+            setAppState('dashboard');
+        }
 
-            const watchedVideosJson = localStorage.getItem('arc7hive_watched_videos');
-            if (watchedVideosJson) {
-                setWatchedVideos(new Set(JSON.parse(watchedVideosJson)));
-            }
-            
-            const customStyles = localStorage.getItem('arc7hive_custom_styles');
-            if(customStyles) {
-                const styleElement = document.createElement('style');
-                styleElement.id = 'custom-admin-styles';
-                styleElement.innerHTML = customStyles;
-                document.head.appendChild(styleElement);
-            }
-
-        } catch (error) {
-            console.error("Failed to load data from localStorage", error);
-            localStorage.clear();
-        } finally {
-            setIsLoading(false);
+        const savedWatched = localStorage.getItem('arc7hive_watchedVideos');
+        if (savedWatched) {
+            setWatchedVideos(new Set(JSON.parse(savedWatched)));
+        }
+        
+        const customStyles = localStorage.getItem('arc7hive_custom_styles');
+        if (customStyles) {
+            const styleElement = document.createElement('style');
+            styleElement.id = 'custom-admin-styles';
+            styleElement.innerHTML = customStyles;
+            document.head.appendChild(styleElement);
         }
     }, []);
 
-    // Fetch initial video data from Supabase
-    useEffect(() => {
-        const fetchVideos = async () => {
-            try {
-                const videosByCat = await supabaseService.fetchAllLearningVideos();
-                setCategories(prevCats => prevCats.map(cat => ({
-                    ...cat,
-                    videos: videosByCat[cat.id] || []
-                })));
-            } catch (error) {
-                handleNotification({type: 'error', message: 'Falha ao carregar vídeos das trilhas.'});
-            }
-        };
-        fetchVideos();
-    }, []);
-
-    // Realtime listeners setup on user login
+    // Firebase/Supabase Listeners
     useEffect(() => {
         if (!user) return;
 
         const unsubMessages = firebaseService.setupMessagesListener(setMeetingMessages);
         const unsubTyping = firebaseService.setupTypingListener(users => setTypingUsers(new Set(users)));
         const unsubOnline = firebaseService.setupOnlineStatusListener(setOnlineUsers);
-        firebaseService.updateUserPresence(user.name, user.avatarUrl);
-
-        setIsLoadingProjects(true);
-        const unsubProjects = supabaseService.setupProjectsListener((data, error) => {
-            if (error) handleNotification({ type: 'error', message: supabaseService.formatSupabaseError(error, 'projects')});
-            else setProjects(data);
-            setIsLoadingProjects(false);
-        });
+        const unsubProjects = firebaseService.setupProjectsListener(setProjects);
         
-        const unsubPlaylist = supabaseService.setupPlaylistListener((data, error) => {
-            if (error) setPlaylistError(supabaseService.formatSupabaseError(error, 'playlist'));
+        const unsubPlaylist = supabaseService.setupPlaylistListener((data, err) => {
+            if (err) setMusicError(supabaseService.formatSupabaseError(err, 'playlist listener'));
             else setPlaylist(data);
         });
 
-        const handleBeforeUnload = () => firebaseService.goOffline(user.name);
-        window.addEventListener('beforeunload', handleBeforeUnload);
+        firebaseService.updateUserPresence(user.name, user.avatarUrl);
 
         return () => {
             unsubMessages();
@@ -133,55 +99,43 @@ const App: React.FC = () => {
             unsubProjects();
             unsubPlaylist();
             firebaseService.goOffline(user.name);
-            window.removeEventListener('beforeunload', handleBeforeUnload);
         };
     }, [user]);
-
-    // Notification listener
+    
+    // Custom notification event listener
     useEffect(() => {
-        const handleAppNotification = (event: Event) => {
-            const customEvent = event as CustomEvent<Notification>;
-            handleNotification(customEvent.detail);
+        const handleNotification = (event: Event) => {
+            const detail = (event as CustomEvent).detail;
+            setNotification(detail);
+            setTimeout(() => setNotification(null), 5000);
         };
-        window.addEventListener('app-notification', handleAppNotification);
-        return () => window.removeEventListener('app-notification', handleAppNotification);
+        window.addEventListener('app-notification', handleNotification);
+        return () => window.removeEventListener('app-notification', handleNotification);
     }, []);
 
     // --- Handlers ---
 
     const handleLogin = (loggedInUser: User) => {
-        localStorage.setItem('arc7hive_user', JSON.stringify(loggedInUser));
-        setUser(loggedInUser);
-        setPage('welcome');
+        const fullUser = users.find(u => u.name === loggedInUser.name) || loggedInUser;
+        setUser(fullUser);
+        setAppState('welcome');
+        localStorage.setItem('arc7hive_user', JSON.stringify(fullUser));
     };
 
     const handleLogout = () => {
         if (user) firebaseService.goOffline(user.name);
-        localStorage.removeItem('arc7hive_user');
         setUser(null);
-        setPage('login');
-    };
-    
-    const handleSaveProfile = (newAvatarUrl: string) => {
-        if (user) {
-            const updatedUser = { ...user, avatarUrl: newAvatarUrl };
-            setUser(updatedUser);
-            localStorage.setItem('arc7hive_user', JSON.stringify(updatedUser));
-            firebaseService.updateUserPresence(user.name, newAvatarUrl);
-        }
-    };
-    
-    const handleNotification = (notif: Notification) => {
-        setNotification(notif);
-        setTimeout(() => setNotification(null), 5000);
+        setAppState('login');
+        setPage('dashboard');
+        localStorage.removeItem('arc7hive_user');
     };
 
-    const handleNavigate = (targetPage: Page, data: any = null) => {
+    const handleNavigate = (targetPage: 'videos' | 'projects' | 'meeting' | 'project-viewer', data?: any) => {
         setPage(targetPage);
         setPageData(data);
     };
 
-    const handleToggleVideoWatched = useCallback((videoId: string) => {
+    const handleToggleVideoWatched = (videoId: string) => {
         setWatchedVideos(prev => {
             const newSet = new Set(prev);
             if (newSet.has(videoId)) {
@@ -189,103 +143,128 @@ const App: React.FC = () => {
             } else {
                 newSet.add(videoId);
             }
-            localStorage.setItem('arc7hive_watched_videos', JSON.stringify(Array.from(newSet)));
+            localStorage.setItem('arc7hive_watchedVideos', JSON.stringify(Array.from(newSet)));
             return newSet;
         });
-    }, []);
-    
-    const handleAddVideos = useCallback(async (categoryId: string, newVideos: Video[]) => {
-        const currentCategory = categories.find(c => c.id === categoryId);
-        if (!currentCategory) return;
-        
-        const videosToAdd = newVideos.filter(nv => !currentCategory.videos.some(ev => ev.id === nv.id));
-        if(videosToAdd.length === 0) return;
-
-        setCategories(prev => prev.map(cat => 
-            cat.id === categoryId ? { ...cat, videos: [...cat.videos, ...videosToAdd] } : cat
-        ));
-
-        try {
-            await supabaseService.addLearningVideos(videosToAdd.map(v => ({...v, category_id: categoryId})));
-        } catch (error) {
-            handleNotification({type: 'error', message: 'Falha ao salvar novos vídeos no banco de dados.'});
-            // Revert state on failure
-            setCategories(prev => prev.map(cat => 
-                cat.id === categoryId ? { ...cat, videos: cat.videos.filter(v => !videosToAdd.some(nv => nv.id === v.id)) } : cat
-            ));
-        }
-    }, [categories]);
-
-    const handleSendMessage = (text: string) => {
-        if (user) firebaseService.sendMessage(user.name, text, user.avatarUrl);
-    };
-
-    const handleTypingChange = (isTyping: boolean) => {
-        if (user) firebaseService.updateTypingStatus(user.name, isTyping);
     };
     
-    const handleStartProjectGeneration = (config: ProjectGenerationConfig) => {
-        setIsCreateProjectModalOpen(false);
-        handleNavigate('project-generation', config);
+    const handleAddVideos = (categoryId: string, newVideos: Video[]) => {
+        setCategories(prev => prev.map(cat => {
+            if (cat.id === categoryId) {
+                const existingVideoIds = new Set(cat.videos.map(v => v.id));
+                const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                return { ...cat, videos: [...cat.videos, ...uniqueNewVideos] };
+            }
+            return cat;
+        }));
     };
     
-    const handleGenerationComplete = async (newProjectData: Omit<Project, 'id' | 'createdAt'>) => {
-        try {
-            await supabaseService.createProject(newProjectData);
-            handleNotification({ type: 'info', message: 'Projeto criado com sucesso!' });
-        } catch (error: any) {
-            handleNotification({ type: 'error', message: `Falha ao salvar o projeto: ${error.message}` });
-        }
-        handleNavigate('projects');
+    const handleUpdateProject = (projectId: string, updates: Partial<Project>) => {
+        firebaseService.updateProject(projectId, updates);
+        // The listener will handle the state update
     };
 
-    const handleDeleteProject = async (projectId: string) => {
-        try {
-            await supabaseService.deleteProject(projectId);
-            handleNotification({ type: 'info', message: 'Projeto apagado com sucesso.' });
-            // The real-time listener will update the 'projects' state automatically.
-        } catch (error) {
-            handleNotification({ type: 'error', message: 'Falha ao apagar o projeto.' });
+    const handleSaveAvatar = (newAvatarUrl: string) => {
+        if (user) {
+            const updatedUser = { ...user, avatarUrl: newAvatarUrl };
+            setUser(updatedUser);
+            localStorage.setItem('arc7hive_user', JSON.stringify(updatedUser));
+            setIsProfileModalOpen(false);
         }
     };
     
-    const nextVideoInfo = useMemo<NextVideoInfo | null>(() => {
+    // Calculate next video to watch
+    const nextVideoInfo: NextVideoInfo | null = (() => {
         for (const category of categories) {
-            const firstUnwatched = category.videos.find(v => !watchedVideos.has(v.id));
-            if (firstUnwatched) {
-                return { video: firstUnwatched, category };
+            for (const video of category.videos) {
+                if (!watchedVideos.has(video.id)) {
+                    return { video, category };
+                }
             }
         }
         return null;
-    }, [categories, watchedVideos]);
-    
+    })();
+
     // --- Render Logic ---
 
-    const renderPage = () => {
-        if (isLoading) return <div className="min-h-screen bg-darker" />; // Or a proper loading spinner
+    if (!user || appState === 'login') {
+        return <LoginPage onLogin={handleLogin} />;
+    }
 
+    if (appState === 'welcome') {
+        return <WelcomeScreen user={user} onFinish={() => setAppState('dashboard')} />;
+    }
+
+    const renderPage = () => {
         switch (page) {
-            case 'login': return <LoginPage onLogin={handleLogin} />;
-            case 'welcome': return user && <WelcomeScreen user={user} onFinish={() => setPage('dashboard')} />;
-            case 'dashboard': return user && <DashboardPage user={user} categories={categories} watchedVideos={watchedVideos} nextVideoInfo={nextVideoInfo} onNavigate={handleNavigate} onLogout={handleLogout} onOpenProfile={() => setIsProfileModalOpen(true)} onOpenAdminPanel={() => setIsAdminPanelOpen(true)} onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)} nowPlaying={nowPlaying} />;
-            case 'videos': return <VideoPlayerPage category={pageData.category} initialVideoId={pageData.videoId || null} watchedVideos={watchedVideos} onToggleVideoWatched={handleToggleVideoWatched} onAddVideos={handleAddVideos} onBack={() => handleNavigate('dashboard')} />;
-            case 'meeting': return user && <MeetingPage user={user} messages={meetingMessages} onSendMessage={handleSendMessage} onBack={() => handleNavigate('dashboard')} typingUsers={typingUsers} onlineUsers={onlineUsers} onTypingChange={handleTypingChange} isAiActive={true} onToggleAi={() => {}} error={meetingError} />;
-            case 'projects': return <ProjectsPage projects={projects} isLoading={isLoadingProjects} onBack={() => handleNavigate('dashboard')} onSelectProject={(p) => handleNavigate('project-viewer', p)} onCreateProject={() => setIsCreateProjectModalOpen(true)} onDeleteProject={handleDeleteProject} />;
-            case 'project-viewer': return <ProjectViewerPage project={pageData} onBack={() => handleNavigate('projects')} />;
-            case 'project-generation': return user && <ProjectGenerationPage user={user} config={pageData} onGenerationComplete={handleGenerationComplete} onCancel={() => handleNavigate('projects')} />;
-            default: return <LoginPage onLogin={handleLogin} />;
+            case 'videos':
+                return <VideoPlayerPage 
+                            category={pageData.category}
+                            initialVideoId={pageData.videoId || null}
+                            watchedVideos={watchedVideos} 
+                            onToggleVideoWatched={handleToggleVideoWatched}
+                            onAddVideos={handleAddVideos}
+                            onBack={() => setPage('dashboard')} 
+                        />;
+            case 'projects':
+                return <ProjectsPage 
+                            user={user} 
+                            projects={projects} 
+                            onBack={() => setPage('dashboard')} 
+                            onViewProject={(project) => handleNavigate('project-viewer', project)}
+                            onProjectCreated={() => { /* Listener handles update */}}
+                        />;
+            case 'project-viewer':
+                 return <ProjectViewerPage 
+                            project={pageData} 
+                            onBack={() => setPage('projects')} 
+                            onUpdateProject={handleUpdateProject}
+                        />
+            case 'meeting':
+                return <MeetingPage
+                            user={user}
+                            messages={meetingMessages}
+                            onlineUsers={onlineUsers}
+                            typingUsers={typingUsers}
+                            error={meetingError}
+                            isAiActive={true} // Simplified for now
+                            onToggleAi={() => {}} // Simplified for now
+                            onSendMessage={(text) => firebaseService.sendMessage(user.name, text, user.avatarUrl)}
+                            onTypingChange={(isTyping) => firebaseService.updateTypingStatus(user.name, isTyping)}
+                            onBack={() => setPage('dashboard')}
+                        />;
+            case 'dashboard':
+            default:
+                return <DashboardPage 
+                            user={user} 
+                            categories={categories} 
+                            watchedVideos={watchedVideos}
+                            nextVideoInfo={nextVideoInfo}
+                            onNavigate={handleNavigate} 
+                            onLogout={handleLogout}
+                            onOpenProfile={() => setIsProfileModalOpen(true)}
+                            onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
+                            onOpenMusicPlayer={() => setIsMusicPlayerOpen(true)}
+                            nowPlaying={nowPlaying}
+                        />;
         }
     };
-    
+
     return (
         <>
             {renderPage()}
-            {user && <Chatbot />}
+            <Chatbot />
+            <AdminPanel isOpen={isAdminPanelOpen} onClose={() => setIsAdminPanelOpen(false)} />
+            <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} currentAvatar={user.avatarUrl} onSave={handleSaveAvatar} />
+            <MusicPlayer 
+                isOpen={isMusicPlayerOpen} 
+                onClose={() => setIsMusicPlayerOpen(false)} 
+                user={user} 
+                playlist={playlist}
+                error={musicError} 
+                onTrackChange={setNowPlaying}
+            />
             {notification && <NotificationBanner message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
-            {user && isCreateProjectModalOpen && <CreateProjectModal isOpen={isCreateProjectModalOpen} onClose={() => setIsCreateProjectModalOpen(false)} user={user} onStartGeneration={handleStartProjectGeneration} />}
-            {user && isProfileModalOpen && <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} currentAvatar={user.avatarUrl} onSave={handleSaveProfile} />}
-            {isAdminPanelOpen && <AdminPanel onClose={() => setIsAdminPanelOpen(false)} />}
-            {user && <MusicPlayer user={user} playlist={playlist} error={playlistError} onTrackChange={setNowPlaying} isOpen={isMusicPlayerOpen} onClose={() => setIsMusicPlayerOpen(false)} />}
         </>
     );
 };

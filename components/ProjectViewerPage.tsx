@@ -1,304 +1,169 @@
-import React, { useRef, useState, useEffect } from 'react';
+
+import React, { useState, useRef, useCallback } from 'react';
 import type { Project, Chapter } from '../types';
 import Icon from './Icons';
-import Avatar from './Avatar';
 import { downloadProjectAsPdf } from '../utils/pdfGenerator';
 import EditImageModal from './EditImageModal';
-import VideoGenerationModal from './VideoGenerationModal';
 import InteractiveEbookModal from './InteractiveEbookModal';
+import VideoGenerationModal from './VideoGenerationModal';
 import { generateImagePromptForText, generateImage } from '../services/geminiService';
-import { updateProject } from '../services/supabaseService';
 
 interface ProjectViewerPageProps {
     project: Project;
     onBack: () => void;
+    onUpdateProject: (projectId: string, updates: Partial<Project>) => void;
 }
 
-const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }) => {
-    const printableAreaRef = useRef<HTMLDivElement>(null);
-    const [isDownloading, setIsDownloading] = useState(false);
-    const [editableProject, setEditableProject] = useState<Project>(project);
-    const [editingImage, setEditingImage] = useState<{ type: 'cover' | 'chapter'; index: number; } | null>(null);
-    const [hasChanges, setHasChanges] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
-    
-    // State for new modals
-    const [videoModalProject, setVideoModalProject] = useState<Project | null>(null);
-    const [interactiveModalProject, setInteractiveModalProject] = useState<Project | null>(null);
+const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, onUpdateProject }) => {
+    const [isEditCoverModalOpen, setIsEditCoverModalOpen] = useState(false);
+    const [isEditChapterImageModalOpen, setIsEditChapterImageModalOpen] = useState<number | null>(null);
+    const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
+    const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+    const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
-    useEffect(() => {
-        setEditableProject(project);
-    }, [project]);
+    const pdfContentRef = useRef<HTMLDivElement>(null);
 
-    const handleDownloadPdf = async () => {
-        if (!printableAreaRef.current) return;
-        setIsDownloading(true);
-        await downloadProjectAsPdf(printableAreaRef.current, editableProject.name);
-        setIsDownloading(false);
-    };
-    
-    const handleRegenerateImage = async (newPrompt: string): Promise<string> => {
-        const imageBase64 = await generateImage(newPrompt);
-        return `data:image/png;base64,${imageBase64}`;
-    };
-    
-    const handleSaveImage = (newImageUrl: string) => {
-        if (!editingImage) return;
-
-        if (editingImage.type === 'cover') {
-            setEditableProject(prev => ({ ...prev, coverImageUrl: newImageUrl }));
-        } else {
-            const updatedChapters = [...editableProject.chapters];
-            updatedChapters[editingImage.index].imageUrl = newImageUrl;
-            setEditableProject(prev => ({ ...prev, chapters: updatedChapters }));
-        }
-        setHasChanges(true);
-        setEditingImage(null);
-    };
-
-    const handleSaveChanges = async () => {
-        setIsSaving(true);
-        try {
-            await updateProject(editableProject.id, {
-                name: editableProject.name,
-                introduction: editableProject.introduction,
-                conclusion: editableProject.conclusion,
-                coverImageUrl: editableProject.coverImageUrl,
-                chapters: editableProject.chapters,
-            });
-            setHasChanges(false);
-            setIsEditing(false);
-            window.dispatchEvent(new CustomEvent('app-notification', { 
-                detail: { type: 'info', message: 'Alterações salvas com sucesso!' }
-            }));
-        } catch (error) {
-            console.error("Failed to save changes:", error);
-            window.dispatchEvent(new CustomEvent('app-notification', { 
-                detail: { type: 'error', message: 'Falha ao salvar as alterações.' }
-            }));
-        } finally {
-            setIsSaving(false);
-        }
-    }
-
-    const handleToggleEdit = () => {
-        if (isEditing && hasChanges) {
-            if (!window.confirm("Você tem alterações não salvas. Deseja descartá-las?")) {
-                return;
+    const handleDownload = async () => {
+        if (pdfContentRef.current) {
+            setIsDownloadingPdf(true);
+            try {
+                await downloadProjectAsPdf(pdfContentRef.current, project.name);
+            } catch (e) {
+                console.error("PDF download failed", e);
+            } finally {
+                setIsDownloadingPdf(false);
             }
         }
-        if (isEditing) {
-            // Cancel editing, reset changes
-            setEditableProject(project);
-            setHasChanges(false);
-        }
-        setIsEditing(!isEditing);
-    };
-
-    const handleTextChange = (field: 'name' | 'introduction' | 'conclusion', value: string) => {
-        setEditableProject(prev => ({ ...prev, [field]: value }));
-        setHasChanges(true);
-    };
-
-    const handleChapterChange = (index: number, field: 'title' | 'content', value: string) => {
-        const updatedChapters = [...editableProject.chapters];
-        updatedChapters[index] = { ...updatedChapters[index], [field]: value };
-        setEditableProject(prev => ({ ...prev, chapters: updatedChapters }));
-        setHasChanges(true);
     };
     
-    const renderMarkdownContent = (text: string) => {
-        return text.split('\n').map((paragraph, index) => (
-            paragraph.trim() ? <p key={index} className="text-gray-300 leading-relaxed mb-4">{paragraph}</p> : null
-        ));
-    }
+    const getCoverPrompt = useCallback(async () => {
+        return await generateImagePromptForText(project.name, project.introduction);
+    }, [project.name, project.introduction]);
+
+    const getChapterPrompt = useCallback(async (chapter: Chapter) => {
+        return await generateImagePromptForText(chapter.title, chapter.content);
+    }, []);
     
-    const getPromptForImage = async (): Promise<string> => {
-        if (!editingImage) return '';
-        if (editingImage.type === 'cover') {
-            return await generateImagePromptForText(editableProject.name, editableProject.introduction);
-        } else {
-            const chapter = editableProject.chapters[editingImage.index];
-            return await generateImagePromptForText(chapter.title, chapter.content);
-        }
+    const handleRegenerateImage = async (newPrompt: string): Promise<string> => {
+        const base64 = await generateImage(newPrompt);
+        return `data:image/png;base64,${base64}`;
     };
 
-    const commonTextAreaProps = "w-full bg-gray-900/50 border border-gray-700 rounded-md py-2 px-4 text-gray-300 leading-relaxed focus:ring-2 focus:ring-brand-red focus:border-brand-red transition";
+    const handleSaveCover = (newImageUrl: string) => {
+        onUpdateProject(project.id, { coverImageUrl: newImageUrl });
+        setIsEditCoverModalOpen(false);
+    };
+    
+    const handleSaveChapterImage = (chapterIndex: number, newImageUrl: string) => {
+        const updatedChapters = [...project.chapters];
+        updatedChapters[chapterIndex] = { ...updatedChapters[chapterIndex], imageUrl: newImageUrl };
+        onUpdateProject(project.id, { chapters: updatedChapters });
+        setIsEditChapterImageModalOpen(null);
+    };
 
     return (
         <>
-            <div className="min-h-screen bg-darker text-white font-sans flex flex-col animate-fade-in">
-                <header className="bg-dark border-b border-gray-900 sticky top-0 z-20">
-                    <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                            <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2 flex-shrink-0">
-                                <Icon name="ChevronLeft" className="w-6 h-6" />
-                            </button>
-                            <div className="min-w-0">
-                                <h1 className="text-xl font-display tracking-wider text-white truncate" title={editableProject.name}>{editableProject.name}</h1>
-                                <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
-                                    <Avatar src={editableProject.avatarUrl} name={editableProject.createdBy} size="sm" />
-                                    <span>Criado por {editableProject.createdBy}</span>
+            <div className="min-h-screen bg-darker text-white font-sans">
+                {/* Header */}
+                 <header className="bg-dark/80 backdrop-blur-sm border-b border-gray-900 sticky top-0 z-20 flex-shrink-0">
+                    <div className="container mx-auto px-4 sm:px-6 py-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center min-w-0">
+                                <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-4 flex-shrink-0">
+                                    <Icon name="ChevronLeft" className="w-6 h-6" />
+                                </button>
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <Icon name="BookOpen" className="w-8 h-8 text-brand-red flex-shrink-0" />
+                                    <div className="min-w-0">
+                                        <h1 className="text-xl font-display tracking-wider text-white truncate">{project.name}</h1>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap justify-end">
-                            <button
-                                onClick={handleToggleEdit}
-                                className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${isEditing ? 'bg-brand-red' : 'bg-gray-700 hover:bg-gray-600'}`}
-                            >
-                                <Icon name="Pencil" className="w-4 h-4" />
-                                <span className="text-sm font-semibold hidden sm:inline">{isEditing ? 'Sair da Edição' : 'Editar'}</span>
-                            </button>
-                             {hasChanges && (
-                                <button
-                                    onClick={handleSaveChanges}
-                                    disabled={isSaving}
-                                    className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 transition-colors disabled:bg-gray-600"
-                                >
-                                    <Icon name="Upload" className="w-4 h-4" />
-                                    <span className="text-sm font-semibold hidden sm:inline">{isSaving ? 'Salvando...' : 'Salvar'}</span>
-                                </button>
-                            )}
-                            {!isEditing && (
-                                <>
-                                    <button 
-                                        onClick={handleDownloadPdf}
-                                        disabled={isDownloading}
-                                        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-brand-red hover:bg-red-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
-                                    >
-                                        <Icon name="Download" className="w-4 h-4" />
-                                        <span className="text-sm font-semibold hidden sm:inline">{isDownloading ? 'Baixando...' : 'Baixar PDF'}</span>
-                                    </button>
-                                    <button
-                                        onClick={() => setVideoModalProject(editableProject)}
-                                        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 transition-colors"
-                                        title="Fazer Vídeo do Ebook"
-                                    >
-                                        <Icon name="Film" className="w-4 h-4" />
-                                        <span className="text-sm font-semibold hidden sm:inline">Vídeo</span>
-                                    </button>
-                                    <button
-                                        onClick={() => setInteractiveModalProject(editableProject)}
-                                        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 transition-colors"
-                                        title="Fazer Ebook Interativo"
-                                    >
-                                        <Icon name="Sparkles" className="w-4 h-4" />
-                                        <span className="text-sm font-semibold hidden sm:inline">Interativo</span>
-                                    </button>
-                                </>
-                            )}
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsVideoModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Gerar Vídeo"><Icon name="Film" className="w-5 h-5"/></button>
+                                <button onClick={() => setIsQuizModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Quiz Interativo"><Icon name="Sparkles" className="w-5 h-5"/></button>
+                                <button onClick={handleDownload} disabled={isDownloadingPdf} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Baixar PDF"><Icon name="Download" className="w-5 h-5"/></button>
+                            </div>
                         </div>
                     </div>
                 </header>
-                <main className="container mx-auto px-4 sm:px-6 py-8 flex-grow">
-                    <div ref={printableAreaRef} className="max-w-4xl mx-auto bg-dark/50 border border-gray-800 rounded-lg overflow-hidden">
-                        {editableProject.coverImageUrl && (
-                            <div className="w-full aspect-[3/4] max-h-[1024px] bg-black relative group">
-                                <img src={editableProject.coverImageUrl} alt={`Capa de ${editableProject.name}`} className="w-full h-full object-contain" />
-                                <button onClick={() => setEditingImage({ type: 'cover', index: -1 })} className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Icon name="Pencil" className="w-5 h-5" />
-                                </button>
-                            </div>
-                        )}
-                    <div className="p-8 md:p-12">
-                        {isEditing ? (
-                            <input
-                                type="text"
-                                value={editableProject.name}
-                                onChange={e => handleTextChange('name', e.target.value)}
-                                className={`w-full text-4xl md:text-5xl font-display mb-8 p-2 ${commonTextAreaProps}`}
-                            />
-                        ) : (
-                             <h1 className="text-4xl md:text-5xl font-display text-white mb-8 border-b-2 border-brand-red pb-4">{editableProject.name}</h1>
-                        )}
-                        
-                        <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">Introdução</h3>
-                        {isEditing ? (
-                             <textarea 
-                                value={editableProject.introduction} 
-                                onChange={e => handleTextChange('introduction', e.target.value)} 
-                                rows={10} 
-                                className={commonTextAreaProps}
-                            />
-                        ) : (
-                             renderMarkdownContent(editableProject.introduction)
-                        )}
 
-                        {editableProject.chapters?.map((chapter, index) => (
-                            <div key={index}>
-                                {isEditing ? (
-                                    <input
-                                        type="text"
-                                        value={chapter.title}
-                                        onChange={e => handleChapterChange(index, 'title', e.target.value)}
-                                        className={`w-full text-2xl font-display text-brand-red mt-8 mb-4 p-2 ${commonTextAreaProps}`}
-                                    />
-                                ) : (
-                                    <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">{chapter.title}</h3>
-                                )}
-
-                                {chapter.imageUrl && (
-                                    <div className="my-6 relative group">
-                                        <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full rounded-lg object-cover" />
-                                        <button onClick={() => setEditingImage({ type: 'chapter', index })} className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Icon name="Pencil" className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                )}
-                                {isEditing ? (
-                                     <textarea 
-                                        value={chapter.content} 
-                                        onChange={e => handleChapterChange(index, 'content', e.target.value)} 
-                                        rows={20} 
-                                        className={commonTextAreaProps}
-                                    />
-                                ) : (
-                                    renderMarkdownContent(chapter.content)
-                                )}
-                            </div>
-                        ))}
-
-                        <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">Conclusão</h3>
-                        {isEditing ? (
-                             <textarea 
-                                value={editableProject.conclusion} 
-                                onChange={e => handleTextChange('conclusion', e.target.value)} 
-                                rows={10} 
-                                className={commonTextAreaProps}
-                            />
-                        ) : (
-                            renderMarkdownContent(editableProject.conclusion)
+                <main ref={pdfContentRef} className="container mx-auto px-4 sm:px-6 py-8 ebook-content">
+                    {/* Cover Section */}
+                    <div className="relative mb-8 text-center pdf-page-break">
+                        {project.coverImageUrl && (
+                             <div className="relative group max-w-lg mx-auto aspect-[3/4] rounded-lg overflow-hidden shadow-2xl shadow-black/50">
+                                <img src={project.coverImageUrl} alt={project.name} className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <button onClick={() => setIsEditCoverModalOpen(true)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
+                                        <Icon name="Pencil" className="w-4 h-4" /> Editar Capa
+                                    </button>
+                                </div>
+                             </div>
                         )}
+                        <h1 className="text-4xl md:text-5xl font-display tracking-wider text-white mt-8">{project.name}</h1>
+                        <p className="text-gray-400 mt-2">por {project.createdBy}</p>
                     </div>
+
+                    {/* Content */}
+                    <div className="max-w-3xl mx-auto prose-invert prose-p:text-gray-300 prose-headings:text-white prose-headings:font-display">
+                        <section className="pdf-page-break">
+                            <h2>Introdução</h2>
+                            <p>{project.introduction}</p>
+                        </section>
+                        {project.chapters.map((chapter, index) => (
+                            <section key={index} className="pdf-page-break">
+                                <h2>{chapter.title}</h2>
+                                {chapter.imageUrl && (
+                                     <div className="relative group my-4 rounded-lg overflow-hidden">
+                                        <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full h-auto object-cover" />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <button onClick={() => setIsEditChapterImageModalOpen(index)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
+                                                <Icon name="Pencil" className="w-4 h-4" /> Editar Imagem
+                                            </button>
+                                        </div>
+                                     </div>
+                                )}
+                                <p>{chapter.content}</p>
+                            </section>
+                        ))}
+                        <section>
+                            <h2>Conclusão</h2>
+                            <p>{project.conclusion}</p>
+                        </section>
                     </div>
                 </main>
             </div>
-            {editingImage && (
-                <EditImageModal
-                    isOpen={!!editingImage}
-                    onClose={() => setEditingImage(null)}
-                    imageUrl={editingImage.type === 'cover' ? editableProject.coverImageUrl : editableProject.chapters[editingImage.index].imageUrl}
-                    getInitialPrompt={getPromptForImage}
+            
+            {/* Modals */}
+            <EditImageModal
+                isOpen={isEditCoverModalOpen}
+                onClose={() => setIsEditCoverModalOpen(false)}
+                imageUrl={project.coverImageUrl}
+                getInitialPrompt={getCoverPrompt}
+                onRegenerate={handleRegenerateImage}
+                onSave={handleSaveCover}
+            />
+            {isEditChapterImageModalOpen !== null && (
+                 <EditImageModal
+                    isOpen={isEditChapterImageModalOpen !== null}
+                    onClose={() => setIsEditChapterImageModalOpen(null)}
+                    imageUrl={project.chapters[isEditChapterImageModalOpen].imageUrl}
+                    getInitialPrompt={() => getChapterPrompt(project.chapters[isEditChapterImageModalOpen!])}
                     onRegenerate={handleRegenerateImage}
-                    onSave={handleSaveImage}
+                    onSave={(newUrl) => handleSaveChapterImage(isEditChapterImageModalOpen!, newUrl)}
                 />
             )}
-            {videoModalProject && (
-                <VideoGenerationModal
-                    isOpen={!!videoModalProject}
-                    onClose={() => setVideoModalProject(null)}
-                    project={videoModalProject}
-                />
-            )}
-            {interactiveModalProject && (
-                <InteractiveEbookModal
-                    isOpen={!!interactiveModalProject}
-                    onClose={() => setInteractiveModalProject(null)}
-                    project={interactiveModalProject}
-                />
-            )}
+            <InteractiveEbookModal 
+                isOpen={isQuizModalOpen}
+                onClose={() => setIsQuizModalOpen(false)}
+                project={project}
+            />
+            <VideoGenerationModal
+                isOpen={isVideoModalOpen}
+                onClose={() => setIsVideoModalOpen(false)}
+                project={project}
+            />
         </>
     );
 };

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Icon from './Icons';
 import type { Song } from '../types';
@@ -5,10 +6,11 @@ import { generateLiveStyles } from '../services/geminiService';
 import { clearMeetingChat, uploadSong, setupPlaylistListener, deleteSong, formatSupabaseError } from '../services/supabaseService';
 
 interface AdminPanelProps {
+    isOpen: boolean;
     onClose: () => void;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     const [prompt, setPrompt] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -22,6 +24,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     const [isUploading, setIsUploading] = useState(false);
     
     useEffect(() => {
+        if (!isOpen) return; // Don't set up listener if the panel is not open
+
         const unsubscribe = setupPlaylistListener((playlistData, err) => {
             if (err) {
                 setError(formatSupabaseError(err, 'playlist listener'));
@@ -30,7 +34,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
             }
         });
         return () => unsubscribe();
-    }, []);
+    }, [isOpen]); // Re-run effect if isOpen changes
 
     const applyStyles = (css: string) => {
         const styleId = 'custom-admin-styles';
@@ -76,6 +80,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     const handleClearChat = async () => {
         if (window.confirm("Você tem certeza que deseja apagar TODAS as mensagens do chat da reunião? Esta ação é irreversível.")) {
             try {
+                // This function is in supabaseService, but the original implementation was in Firebase.
+                // Assuming the supabase one is now the source of truth.
                 await clearMeetingChat();
                 setMessage('O histórico do chat da reunião foi limpo com sucesso!');
                 setTimeout(() => setMessage(''), 3000);
@@ -129,6 +135,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                  setError(errorMessage);
             }
         }
+    }
+
+    if (!isOpen) {
+        return null;
     }
 
     return (

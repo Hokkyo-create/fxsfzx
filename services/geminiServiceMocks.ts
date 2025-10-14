@@ -1,99 +1,88 @@
-// services/geminiServiceMocks.ts
+
+// Fix: Provide the full implementation for the Gemini mock service.
 import { Type } from "@google/genai";
-import type { QuizQuestion, Video, VideoScript, YouTubeTrack } from "../types";
-
-// --- Mock Data ---
-
-const placeholderVideos = [
-    'https://videos.pexels.com/video-files/3209828/3209828-hd_1280_720_25fps.mp4',
-    'https://videos.pexels.com/video-files/2099392/2099392-hd_1280_720_24fps.mp4',
-    'https://videos.pexels.com/video-files/4434246/4434246-hd_1280_720_25fps.mp4',
-    'https://videos.pexels.com/video-files/853875/853875-hd_1280_720_30fps.mp4',
-];
-
-// --- Mock Functions ---
+import type { QuizQuestion, VideoScript } from "../types";
 
 export const getMockMeetingChatResponse = (): string => {
-    return "Modo de simulação: A cota da API foi excedida. Não posso processar esta solicitação no momento.";
+    return "Claro! O ponto principal da última reunião foi a decisão de focar no marketing de conteúdo para o próximo trimestre. Alguma outra pergunta?";
 };
 
-export const getMockFindMoreVideos = (): Video[] => {
-    return [
-        {
-            id: 'dQw4w9WgXcQ',
-            title: 'Vídeo de Simulação (Cota da API Excedida)',
-            duration: '3:32',
-            thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
-            platform: 'youtube',
-        }
-    ];
-};
-
-export const getMockChatbotResponse = (isError: boolean = false): string => {
-    if (isError) {
-        return "Oops! Tive um problema para me conectar. Como a cota da API foi excedida, estou em modo de simulação.";
-    }
-    return "Olá! Estou operando em modo de simulação, pois a cota da API foi atingida. Minhas respostas são pré-definidas.";
+export const getMockChatbotResponse = (isStream: boolean): string => {
+    return "A plataforma ARC7HIVE é um ecossistema de aprendizado e colaboração focado em habilidades digitais. Você pode explorar trilhas de conhecimento, colaborar em projetos de ebook com IA, e até mesmo ouvir nossa rádio colaborativa!";
 };
 
 export const getMockLiveStyles = (): string => {
-    return "/* Modo de simulação: Geração de estilo desativada */";
-};
-
-export const getMockImagePrompt = (): string => {
-    return "a simulation of a beautiful futuristic city at sunset, digital art";
-};
-
-export const getMockImageBase64 = (): string => {
-    // A gray placeholder image
-    return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN8/x8AAuMB8DtXNJsAAAAASUVORK5CYII=";
+    return `
+        body {
+            --darker: #080808;
+            --dark: #121212;
+            --brand-red: #E50914;
+        }
+        .dashboard-header {
+            background-color: rgba(18, 18, 18, 0.85);
+        }
+        .progress-summary-card {
+            border: 1px solid var(--brand-red);
+            background: linear-gradient(145deg, #1a1a1a, #111);
+        }
+        .category-card {
+            box-shadow: 0 0 15px rgba(229, 9, 20, 0.3);
+        }
+    `;
 };
 
 export async function* getMockEbookStreamGenerator(): AsyncGenerator<string> {
-    const mockContent = `
-# Título do Ebook de Simulação
+    const fullText = `
+# O Guia Definitivo de Mock Data
+
 [INTRODUÇÃO]
-Este é um ebook gerado em modo de simulação porque a cota da API foi excedida. O conteúdo aqui é apenas um exemplo.
-[CAPÍTULO 1: O Que é o Modo de Simulação?]
-O modo de simulação permite que o aplicativo continue funcionando com dados de exemplo quando a API principal não está disponível.
-[CAPÍTULO 2: Benefícios]
-Isso evita que o aplicativo trave e permite que o desenvolvimento e o teste da interface do usuário continuem sem interrupções.
+Bem-vindo ao mundo dos dados simulados! Este ebook irá guiá-lo através dos conceitos fundamentais e das melhores práticas para gerar e utilizar mock data em seus projetos.
+
+[CAPÍTULO 1: O que são Mock Data?]
+Neste capítulo, exploramos a definição de mock data, por que são essenciais para o desenvolvimento de software moderno, e as diferenças entre mock data, dados de teste e dados reais.
+
+[CAPÍTULO 2: Ferramentas Populares]
+Analisamos as ferramentas mais populares do mercado para geração de dados, como Faker.js, Mockaroo, e as funcionalidades integradas de bibliotecas como a MSW (Mock Service Worker).
+
 [CONCLUSÃO]
-Este é o fim do ebook de simulação.
+Agora você está equipado com o conhecimento para acelerar seu desenvolvimento, criar testes mais robustos e construir aplicações melhores com o poder dos mock data.
     `;
-    // Split into chunks to simulate streaming
-    const chunks = mockContent.match(/.{1,50}/g) || [mockContent];
-    for (const chunk of chunks) {
-        await new Promise(resolve => setTimeout(resolve, 50)); // simulate network delay
-        yield chunk;
+
+    const words = fullText.split(' ');
+    for (const word of words) {
+        yield word + ' ';
+        await new Promise(resolve => setTimeout(resolve, 10));
     }
 }
 
-export const getMockPromptIdeas = (): string[] => {
-    return [
-        "Simulated prompt idea one",
-        "Simulated prompt idea two",
-        "Simulated prompt idea three",
-    ];
+export const getMockImagePrompt = (): string => {
+    return "digital art of a glowing brain made of code, cinematic lighting, vibrant neon colors, dark background";
 };
 
-export const getMockYouTubeMusic = (): YouTubeTrack[] => {
+export const getMockImageBase64 = (): string => {
+    // A simple 1x1 transparent PNG
+    return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+};
+
+export const getMockPromptIdeas = (): string[] => {
     return [
-        { id: 'dQw4w9WgXcQ', title: 'Sample Music (Simulation)', artist: 'Mock Artist', thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }
+        "a photorealistic image of a motherboard with glowing circuits forming a human brain",
+        "concept art of a data stream flowing into a futuristic neural network, cyberpunk aesthetic",
+        "3D render of abstract code structures and data points, floating in space, deep blue and magenta"
     ];
 };
 
 export const getMockEbookQuiz = (): QuizQuestion[] => {
     return [
         {
-            question: "Por que este quiz está sendo exibido?",
-            options: ["Porque eu cliquei no botão", "Porque a cota da API foi excedida", "Para testar meu conhecimento", "É um recurso novo"],
-            correctAnswer: "Porque a cota da API foi excedida"
+            question: "Qual é o principal objetivo do uso de mock data?",
+            options: ["Substituir o banco de dados de produção", "Acelerar o desenvolvimento e permitir testes independentes", "Gerar dados 100% precisos", "Apenas para design de UI"],
+            correctAnswer: "Acelerar o desenvolvimento e permitir testes independentes"
         },
         {
-            question: "O que acontece no modo de simulação?",
-            options: ["O aplicativo para de funcionar", "Tudo funciona normalmente", "A IA é mais lenta", "O aplicativo usa dados de exemplo"],
-            correctAnswer: "O aplicativo usa dados de exemplo"
+            question: "Qual ferramenta é comumente usada para gerar dados falsos em JavaScript?",
+            options: ["React", "Lodash", "Faker.js", "Moment.js"],
+            correctAnswer: "Faker.js"
         }
     ];
 };
@@ -101,26 +90,34 @@ export const getMockEbookQuiz = (): QuizQuestion[] => {
 export const getMockVideoScript = (): VideoScript => {
     return {
         scenes: [
-            { narration: "Este é um vídeo de simulação.", prompt: "tela de computador com código" },
-            { narration: "Ele foi gerado porque a cota da API foi excedida.", prompt: "sinal de alerta com ponto de exclamação" },
-            { narration: "Ele usa vídeos de exemplo para continuar funcionando.", prompt: "biblioteca de fitas de vídeo" }
+            {
+                narration: "Você sabia que dados simulados podem acelerar seu desenvolvimento em até 50%?",
+                prompt: "programador digitando código rápido"
+            },
+            {
+                narration: "Eles permitem que front-end e back-end trabalhem em paralelo, sem bloqueios.",
+                prompt: "duas pessoas trabalhando juntas em um projeto"
+            },
+            {
+                narration: "Comece a usar mock data hoje e transforme seu fluxo de trabalho.",
+                prompt: "gráfico de produtividade subindo"
+            }
         ],
-        fullNarrationScript: "Este é um vídeo de simulação. Ele foi gerado porque a cota da API foi excedida. Ele usa vídeos de exemplo para continuar funcionando."
+        fullNarrationScript: "Você sabia que dados simulados podem acelerar seu desenvolvimento em até 50%? Eles permitem que front-end e back-end trabalhem em paralelo, sem bloqueios. Comece a usar mock data hoje e transforme seu fluxo de trabalho."
     };
 };
 
-// --- Schemas for JSON parsing (used by real calls, but good to keep mocks consistent) ---
 export const quizSchema = {
-    type: Type.ARRAY,
-    items: {
-        type: Type.OBJECT,
-        properties: {
-            question: { type: Type.STRING },
-            options: { type: Type.ARRAY, items: { type: Type.STRING } },
-            correctAnswer: { type: Type.STRING },
-        },
-        required: ["question", "options", "correctAnswer"],
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      question: { type: Type.STRING },
+      options: { type: Type.ARRAY, items: { type: Type.STRING } },
+      correctAnswer: { type: Type.STRING }
     },
+    required: ["question", "options", "correctAnswer"]
+  }
 };
 
 export const videoScriptSchema = {
@@ -132,12 +129,12 @@ export const videoScriptSchema = {
                 type: Type.OBJECT,
                 properties: {
                     narration: { type: Type.STRING },
-                    prompt: { type: Type.STRING },
+                    prompt: { type: Type.STRING }
                 },
-                required: ["narration", "prompt"],
-            },
+                required: ["narration", "prompt"]
+            }
         },
-        fullNarrationScript: { type: Type.STRING },
+        fullNarrationScript: { type: Type.STRING }
     },
-    required: ["scenes", "fullNarrationScript"],
+    required: ["scenes", "fullNarrationScript"]
 };

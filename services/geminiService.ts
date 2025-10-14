@@ -1,5 +1,7 @@
+
 import { GoogleGenAI, Type, GenerateContentResponse, GenerateImagesResponse } from "@google/genai";
 import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video } from "../types";
+// Fix: Use a namespace import to correctly reference the exported functions from the mock service.
 import * as mockService from './geminiServiceMocks';
 
 let isGeminiQuotaExceeded = false;
