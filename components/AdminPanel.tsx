@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Icon from './Icons';
 import type { Song } from '../types';
 import { generateLiveStyles } from '../services/geminiService';
-import { clearMeetingChat, uploadSong, setupPlaylistListener, deleteSong } from '../services/supabaseService';
+import { clearMeetingChat, uploadSong, setupPlaylistListener, deleteSong, formatSupabaseError } from '../services/supabaseService';
 
 interface AdminPanelProps {
     onClose: () => void;
@@ -22,7 +22,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     const [isUploading, setIsUploading] = useState(false);
     
     useEffect(() => {
-        const unsubscribe = setupPlaylistListener(setPlaylist);
+        const unsubscribe = setupPlaylistListener((playlistData, err) => {
+            if (err) {
+                setError(formatSupabaseError(err, 'playlist listener'));
+            } else {
+                setPlaylist(playlistData);
+            }
+        });
         return () => unsubscribe();
     }, []);
 

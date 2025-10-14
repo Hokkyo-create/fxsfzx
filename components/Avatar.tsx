@@ -16,7 +16,7 @@ const sizeMap = {
 
 const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', className = '' }) => {
     const [hasError, setHasError] = useState(false);
-    const initials = name.charAt(0).toUpperCase();
+    const initials = (name || '').charAt(0).toUpperCase();
 
     const handleError = () => {
         setHasError(true);
