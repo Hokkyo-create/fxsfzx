@@ -107,9 +107,9 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
     const youtubePlayerRef = useRef<any>(null);
     const progressBarRef = useRef<HTMLDivElement>(null);
     const progressIntervalRef = useRef<number | null>(null);
-    const intentToPlayYoutube = useRef(false);
     const isSeeking = useRef(false);
     const lastVolume = useRef(volume);
+    const isMyUpdate = useRef(false);
 
     const currentPlaylistTrackId = radioState?.current_track_id;
     const currentPlaylistTrack = playlist.find(s => s.id === currentPlaylistTrackId);
@@ -118,18 +118,18 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         { title: currentPlaylistTrack?.title, artist: currentPlaylistTrack?.artist, art: null } : 
         { title: youtubeTrack?.title, artist: youtubeTrack?.artist, art: youtubeTrack?.thumbnailUrl };
 
-    // --- State Sync & Listeners ---
+    // Update marquee when track or play state changes
     useEffect(() => {
-        if ((isRadioActive && isPlaying) && currentTrack?.title) {
-            onTrackChange({ title: currentTrack.title, artist: currentTrack.artist || 'Rádio Colaborativa' });
+        if (isPlaying && currentTrack?.title) {
+            onTrackChange({ title: currentTrack.title, artist: currentTrack.artist || (mode === 'playlist' ? 'Rádio Colaborativa' : 'YouTube') });
         } else {
             onTrackChange(null);
         }
-    }, [isRadioActive, isPlaying, currentTrack, onTrackChange]);
+    }, [isPlaying, currentTrack, mode, onTrackChange]);
 
+    // Subscribe to Supabase radio state when activated
     useEffect(() => {
         if (!isRadioActive) return;
-
         const unsubscribe = setupRadioStateListener((state, err) => {
             if (err) console.error("Error fetching radio state:", err);
             else if (state) setRadioState(state);
@@ -137,17 +137,24 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         return () => unsubscribe();
     }, [isRadioActive]);
     
+    // Sync local audio player with the shared radio state from Supabase
     useEffect(() => {
-        if (mode !== 'playlist' || !isRadioActive || !radioState || !audioRef.current || !currentPlaylistTrack) return;
+        if (mode !== 'playlist' || !isRadioActive || !radioState || !audioRef.current || isMyUpdate.current) {
+            isMyUpdate.current = false;
+            return;
+        }
 
-        const { is_playing, seek_timestamp, track_progress_on_seek, updated_by } = radioState;
+        const { current_track_id, is_playing, seek_timestamp, track_progress_on_seek } = radioState;
+        const trackFromState = playlist.find(s => s.id === current_track_id);
 
-        if (audioRef.current.src !== currentPlaylistTrack.url) {
-            audioRef.current.src = currentPlaylistTrack.url;
+        if (!trackFromState) return;
+
+        if (audioRef.current.src !== trackFromState.url) {
+            audioRef.current.src = trackFromState.url;
             audioRef.current.load();
         }
 
-        if (updated_by !== user.name && !isSeeking.current) {
+        if (!isSeeking.current) {
             const timeSinceUpdate = (Date.now() - seek_timestamp) / 1000;
             const expectedCurrentTime = track_progress_on_seek + (is_playing ? timeSinceUpdate : 0);
             if (Math.abs(audioRef.current.currentTime - expectedCurrentTime) > 2) {
@@ -156,21 +163,20 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         }
         
         if (is_playing && audioRef.current.paused) {
-            audioRef.current.play().catch(e => console.log("Autoplay prevented by browser."));
+            audioRef.current.play().catch(e => console.log("Sync play prevented by browser."));
         } else if (!is_playing && !audioRef.current.paused) {
             audioRef.current.pause();
         }
-    }, [radioState, playlist, mode, user.name, currentPlaylistTrack, isRadioActive]);
+    }, [radioState, playlist, mode, user.name, isRadioActive]);
 
+    // Initialize YouTube Player
     useEffect(() => {
         const onPlayerStateChange = (event: any) => {
-            if (intentToPlayYoutube.current && event.data === window.YT.PlayerState.CUED) {
-                youtubePlayerRef.current.playVideo();
-                intentToPlayYoutube.current = false;
+            if (event.data === window.YT.PlayerState.CUED || event.data === window.YT.PlayerState.UNSTARTED) {
+                event.target.playVideo();
             }
             setIsPlaying(event.data === window.YT.PlayerState.PLAYING);
         };
-
         const initYoutubePlayer = () => {
              youtubePlayerRef.current = new window.YT.Player('youtube-player', {
                 height: '1', width: '1',
@@ -185,6 +191,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         }
     }, []);
     
+    // Update progress bar
     useEffect(() => {
         if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
         if (isPlaying && !isSeeking.current) {
@@ -204,12 +211,14 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         return () => { if (progressIntervalRef.current) clearInterval(progressIntervalRef.current) };
     }, [isPlaying, mode]);
     
+    // Update volume
     useEffect(() => {
         const newVolume = isMuted ? 0 : volume;
         if (audioRef.current) audioRef.current.volume = newVolume;
         if (youtubePlayerRef.current?.setVolume) youtubePlayerRef.current.setVolume(newVolume * 100);
     }, [volume, isMuted]);
 
+    // Function to send state updates to Supabase
     const handleUpdateRadioState = (newState: Partial<RadioState>) => {
         if (!isRadioActive) return;
         const progress = audioRef.current?.currentTime || 0;
@@ -229,18 +238,35 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
             }
             if (!currentPlaylistTrack && playlist.length > 0) {
                 handleSelectPlaylistTrack(playlist[0]);
+                return;
+            }
+            const shouldBePlaying = !radioState?.is_playing;
+            isMyUpdate.current = true;
+            handleUpdateRadioState({ is_playing: shouldBePlaying });
+            if (shouldBePlaying) {
+                audioRef.current?.play().catch(console.error);
             } else {
-                handleUpdateRadioState({ is_playing: !radioState?.is_playing });
+                audioRef.current?.pause();
             }
         } else {
-             if (isPlaying) youtubePlayerRef.current?.pauseVideo();
-             else youtubePlayerRef.current?.playVideo();
+             const playerState = youtubePlayerRef.current?.getPlayerState();
+             if (playerState === 1) {
+                 youtubePlayerRef.current.pauseVideo();
+             } else {
+                 youtubePlayerRef.current.playVideo();
+             }
         }
     };
 
     const handleSelectPlaylistTrack = (song: Song) => {
         if (!isRadioActive) setIsRadioActive(true);
+        isMyUpdate.current = true;
         handleUpdateRadioState({ current_track_id: song.id, is_playing: true, track_progress_on_seek: 0 });
+        if (audioRef.current) {
+            audioRef.current.src = song.url;
+            audioRef.current.load();
+            audioRef.current.play().catch(e => console.error("Playback failed on select:", e));
+        }
     };
     
     const toTrack = (direction: 'next' | 'prev') => {
@@ -256,11 +282,15 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         isSeeking.current = true;
         const rect = progressBarRef.current.getBoundingClientRect();
         const newTime = ((e.clientX - rect.left) / rect.width) * duration;
+        
         if (mode === 'playlist') {
             if (audioRef.current) audioRef.current.currentTime = newTime;
+            isMyUpdate.current = true;
             handleUpdateRadioState({ track_progress_on_seek: newTime });
+        } else if (mode === 'youtube' && youtubePlayerRef.current?.seekTo) {
+            youtubePlayerRef.current.seekTo(newTime, true);
         }
-        if (mode === 'youtube' && youtubePlayerRef.current?.seekTo) youtubePlayerRef.current.seekTo(newTime, true);
+        
         setProgress(newTime);
         setTimeout(() => { isSeeking.current = false }, 200);
     }
@@ -283,7 +313,6 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         if (!isPlayerReady) return;
         setYoutubeTrack(track);
         switchMode('youtube');
-        intentToPlayYoutube.current = true;
         youtubePlayerRef.current.loadVideoById(track.id);
     };
 
@@ -307,22 +336,27 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         if (newVol > 0) {
             setIsMuted(false);
             lastVolume.current = newVol;
+        } else {
+            setIsMuted(true);
         }
     };
     
     const toggleMute = () => {
-        setIsMuted(prev => {
-            if (!prev && volume > 0) lastVolume.current = volume;
-            setVolume(prev ? lastVolume.current : 0);
-            return !prev;
-        });
+        const shouldMute = !isMuted;
+        setIsMuted(shouldMute);
+        if (shouldMute && volume > 0) {
+            lastVolume.current = volume;
+            setVolume(0);
+        } else if (!shouldMute) {
+            setVolume(lastVolume.current > 0 ? lastVolume.current : 0.75);
+        }
     };
     
     if (!isOpen) return null;
 
     return (
         <>
-            <audio ref={audioRef} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => toTrack('next')} onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)} crossOrigin="anonymous" />
+            <audio ref={audioRef} onPlay={() => {if(mode === 'playlist') setIsPlaying(true)}} onPause={() => {if(mode === 'playlist') setIsPlaying(false)}} onEnded={() => toTrack('next')} onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)} crossOrigin="anonymous" />
             <div id="youtube-player" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
             {isUploadModalOpen && <UploadSongModal onClose={() => setIsUploadModalOpen(false)} />}
             
@@ -353,7 +387,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
                      <div className="mt-4 flex items-center justify-center gap-6">
                         <button onClick={() => toTrack('prev')} disabled={mode !== 'playlist'} className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-30"><Icon name="SkipBack" className="w-6 h-6"/></button>
                         <button onClick={togglePlayPause} className="w-14 h-14 bg-brand-red rounded-full flex items-center justify-center text-white shadow-lg transform transition-transform hover:scale-110">
-                            <Icon name={isPlaying && isRadioActive ? "Pause" : "Play"} className="w-7 h-7" />
+                            <Icon name={isPlaying ? "Pause" : "Play"} className="w-7 h-7" />
                         </button>
                         <button onClick={() => toTrack('next')} disabled={mode !== 'playlist'} className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-30"><Icon name="SkipForward" className="w-6 h-6"/></button>
                      </div>
