@@ -139,23 +139,22 @@ const parsePipedVideoResponse = (data: any, existingVideoIds: Set<string>): Vide
         });
 };
 
-// Curated list of public instances (Updated for reliability)
+// Curated list of public instances (Updated for reliability on Vercel)
 const invidiousApiInstances = [
     'https://vid.puffyan.us',
     'https://invidious.lunar.icu',
     'https://invidious.protokoll.fi',
-    'https://invidious.incogniweb.net',
     'https://iv.melmac.space',
-    'https://invidious.tiekoetter.com',
+    'https://invidious.projectsegfau.lt',
+    'https://invidious.incogniweb.net',
 ];
 
 const pipedApiInstances = [
-    'https://pipedapi.privacy.com.de',
-    'https://pipedapi.in.projectsegfau.lt',
+    'https://pipedapi.kavin.rocks',
     'https://pipedapi.smnz.de',
+    'https://pipedapi.adminforge.de',
+    'https://pipedapi.in.projectsegfau.lt',
     'https://pipedapi.frontend.la',
-    'https://piped-api.work.ink',
-    'https://pipedapi.drgns.space',
 ];
 
 
