@@ -1,7 +1,11 @@
-import type { IconName as OriginalIconName } from './components/Icons';
+// Fix: Consolidate all IconName definitions here to serve as the single source of truth and remove circular dependencies.
+// All icon names are now defined in this one place.
+export type IconName = 
+  // Base Icons
+  'Fire' | 'Chart' | 'Heart' | 'ChevronLeft' | 'Play' | 'Plus' | 'Check' | 'Share' |
+  // App-specific Icons from original type
+  'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search' | 'Film' | 'Sparkles' | 'Info' | 'VolumeUp' | 'VolumeOff';
 
-// Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search' | 'Film' | 'Sparkles' | 'Info' | 'VolumeUp' | 'VolumeOff';
 
 export interface User {
   name: string;
