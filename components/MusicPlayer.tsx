@@ -110,6 +110,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
     const isSeeking = useRef(false);
     const lastVolume = useRef(volume);
     const isMyUpdate = useRef(false);
+    const intentToPlayYoutube = useRef(false);
 
     const currentPlaylistTrackId = radioState?.current_track_id;
     const currentPlaylistTrack = playlist.find(s => s.id === currentPlaylistTrackId);
@@ -172,8 +173,9 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
     // Initialize YouTube Player
     useEffect(() => {
         const onPlayerStateChange = (event: any) => {
-            if (event.data === window.YT.PlayerState.CUED || event.data === window.YT.PlayerState.UNSTARTED) {
+            if (intentToPlayYoutube.current && event.data === window.YT.PlayerState.CUED) {
                 event.target.playVideo();
+                intentToPlayYoutube.current = false;
             }
             setIsPlaying(event.data === window.YT.PlayerState.PLAYING);
         };
@@ -261,12 +263,14 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
     const handleSelectPlaylistTrack = (song: Song) => {
         if (!isRadioActive) setIsRadioActive(true);
         isMyUpdate.current = true;
-        handleUpdateRadioState({ current_track_id: song.id, is_playing: true, track_progress_on_seek: 0 });
+        // Set local player immediately for instant feedback
         if (audioRef.current) {
             audioRef.current.src = song.url;
             audioRef.current.load();
             audioRef.current.play().catch(e => console.error("Playback failed on select:", e));
         }
+        // Then, update the shared state
+        handleUpdateRadioState({ current_track_id: song.id, is_playing: true, track_progress_on_seek: 0 });
     };
     
     const toTrack = (direction: 'next' | 'prev') => {
@@ -313,6 +317,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         if (!isPlayerReady) return;
         setYoutubeTrack(track);
         switchMode('youtube');
+        intentToPlayYoutube.current = true;
         youtubePlayerRef.current.loadVideoById(track.id);
     };
 
