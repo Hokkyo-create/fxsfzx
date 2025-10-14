@@ -1,422 +1,238 @@
 import { supabase } from '../supabaseClient';
-import type { MeetingMessage, OnlineUser, Project, Song, User, Video, LearningCategory, RadioState } from '../types';
-import type { RealtimeChannel, PostgrestError, StorageError } from '@supabase/supabase-js';
+import type { PostgrestError } from '@supabase/supabase-js';
+import type { Project, Song, RadioState, Video } from '../types';
 
-// Helper function to sanitize filenames for storage
-const sanitizeFileName = (fileName: string): string => {
-  // Replace spaces and other problematic characters with underscores for safety
-  const withUnderscores = fileName.replace(/[\s&?#%]/g, '_');
-  // Remove any remaining characters that are not standard for file names
-  const sanitized = withUnderscores.replace(/[^a-zA-Z0-9_.-]/g, '');
-  return sanitized;
+// Helper to format errors
+export const formatSupabaseError = (error: PostgrestError | null, context: string): string => {
+    if (!error) return '';
+    console.error(`Supabase error in ${context}:`, error);
+    return `Erro de banco de dados em ${context}: ${error.message || 'Erro desconhecido.'}`;
 };
 
+// --- Projects ---
 
-// --- Centralized Error Formatting ---
-export const formatSupabaseError = (error: PostgrestError | Error | null, context: string): string | null => {
-    if (!error) return null;
+const projectFromRow = (p: any): Project => ({
+    id: p.id,
+    name: p.name,
+    introduction: p.introduction,
+    chapters: p.chapters ?? [],
+    conclusion: p.conclusion,
+    createdBy: p.created_by,
+    avatarUrl: p.avatar_url,
+    createdAt: new Date(p.created_at).getTime(),
+    coverImageUrl: p.cover_image_url,
+});
 
-    console.error(`Error with ${context}:`, error);
-    
-    // New check for the ON CONFLICT error
-    if (error.message.includes('ON CONFLICT specification')) {
-        return `Erro de Configuração do Banco de Dados: A tabela em "${context}" não possui uma Chave Primária (PRIMARY KEY) ou restrição UNIQUE. Para corrigir, vá ao Editor de Tabelas no Supabase e defina a coluna 'id' como Chave Primária.`;
-    }
-
-    if ('code' in error && error.code === 'PGRST205') {
-        const tableNameMatch = error.message.match(/'public\.(.*?)'/);
-        const tableName = tableNameMatch ? tableNameMatch[1] : context;
-        return `A tabela "${tableName}" não foi encontrada. Verifique se ela foi criada corretamente no seu projeto Supabase, usando o SQL Editor.`;
-    }
-    
-    if (error.message && (error.message.toLowerCase().includes('rls') || error.message.toLowerCase().includes('security policies') || ('code' in error && error.code === '42501'))) {
-        let action = 'ler';
-        if (error.message.toLowerCase().includes('violates row-level security policy')) {
-             action = 'gravar novos dados';
-        }
-        return `Acesso negado para "${context}". Verifique se a política de RLS (Row Level Security) que permite ${action} está configurada no seu painel do Supabase.`;
-    }
-    
-    return `Falha ao carregar ${context}. Detalhes: ${error.message}`;
-}
-
-
-// --- Listener Setup ---
-
-// Meeting Chat
-export const setupMessagesListener = (callback: (messages: MeetingMessage[], error: PostgrestError | null) => void) => {
-    const handleMessageUpdates = async () => {
-        const { data, error } = await supabase
-            .from('meeting_messages')
-            .select('*')
-            .order('timestamp', { ascending: true });
-
-        if (error) {
-            callback([], error);
-        } else {
-            callback(data as MeetingMessage[], null);
-        }
-    };
-
-    handleMessageUpdates(); // Initial fetch
-
-    const channel = supabase.channel('public:meeting_messages')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'meeting_messages' }, handleMessageUpdates)
-        .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-};
-
-// Projects
 export const setupProjectsListener = (callback: (projects: Project[], error: PostgrestError | null) => void) => {
-    const handleProjectUpdates = async () => {
+    const fetchProjects = async () => {
         const { data, error } = await supabase
             .from('projects')
             .select('*')
-            .order('createdAt', { ascending: false });
+            .order('created_at', { ascending: false });
 
-        if (error) {
-            callback([], error);
+        if (data) {
+            callback(data.map(projectFromRow), null);
         } else {
-            callback(data as Project[], null);
-        }
-    };
-
-    handleProjectUpdates();
-
-    const channel = supabase.channel('public:projects')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, handleProjectUpdates)
-        .subscribe();
-        
-    return () => { supabase.removeChannel(channel); };
-};
-
-// Music Playlist
-export const setupPlaylistListener = (callback: (playlist: Song[], error: PostgrestError | null) => void) => {
-    const handlePlaylistUpdates = async () => {
-        const { data, error } = await supabase.from('songs').select('*');
-        if (error) {
             callback([], error);
-        } else {
-            callback(data as Song[], null);
         }
-    };
-
-    handlePlaylistUpdates();
-
-    const channel = supabase.channel('public:songs')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'songs' }, handlePlaylistUpdates)
-        .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-};
-
-// Learning Videos
-export const setupVideosListener = (callback: (videos: Record<string, Video[]>, error: PostgrestError | null) => void) => {
-    const handleVideoUpdates = async () => {
-        const { data, error } = await supabase.from('learning_videos').select('*');
-        if (error) {
-            callback({}, error);
-            return;
-        }
-
-        const videosByCategory = (data as any[]).reduce((acc, video) => {
-            const mappedVideo: Video = {
-                id: video.id,
-                title: video.title,
-                duration: video.duration,
-                thumbnailUrl: video.thumbnail_url,
-                platform: video.platform,
-            };
-            if (!acc[video.category_id]) {
-                acc[video.category_id] = [];
-            }
-            acc[video.category_id].push(mappedVideo);
-            return acc;
-        }, {} as Record<string, Video[]>);
-        callback(videosByCategory, null);
     };
     
-    handleVideoUpdates();
+    fetchProjects();
 
-    const channel = supabase.channel('public:learning_videos')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_videos' }, handleVideoUpdates)
+    const channel = supabase.channel('projects-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
+            fetchProjects();
+        })
         .subscribe();
         
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+        supabase.removeChannel(channel).catch(console.error);
+    };
 };
 
-// Radio State
-export const setupRadioStateListener = (callback: (state: RadioState | null, error: PostgrestError | null) => void) => {
-    const handleStateUpdate = async () => {
-        const { data, error } = await supabase
-            .from('radio_state')
-            .select('*')
-            .eq('id', 1)
-            .single();
+export const createProject = async (projectData: Omit<Project, 'id' | 'createdAt'>): Promise<void> => {
+    const { error } = await supabase.from('projects').insert({
+        name: projectData.name,
+        introduction: projectData.introduction,
+        chapters: projectData.chapters,
+        conclusion: projectData.conclusion,
+        created_by: projectData.createdBy,
+        avatar_url: projectData.avatarUrl,
+        cover_image_url: projectData.coverImageUrl,
+    });
+    if (error) throw error;
+};
 
-        if (error && error.code !== 'PGRST116') { // Ignore "not found" which is ok on first run
-            callback(null, error);
-        } else {
-            callback(data as RadioState | null, null);
+export const updateProject = async (projectId: string, updatedData: Partial<Project>): Promise<void> => {
+    const { error } = await supabase
+        .from('projects')
+        .update({
+            cover_image_url: updatedData.coverImageUrl,
+            chapters: updatedData.chapters,
+        })
+        .eq('id', projectId);
+    if (error) throw error;
+};
+
+
+// --- Meeting Chat ---
+
+export const clearMeetingChat = async (): Promise<void> => {
+    // This function was originally in firebaseService.ts, but is imported from supabaseService.
+    // If chat is also migrated, this is the implementation.
+    // For now, let's point to the firebase one or throw an error.
+    // Given the AdminPanel imports it from here, we'll provide an implementation.
+    const { error } = await supabase.from('meeting_messages').delete().neq('id', 0); // Delete all
+    if (error) throw error;
+};
+
+// --- Learning Videos ---
+
+export const fetchAllLearningVideos = async (): Promise<Record<string, Video[]>> => {
+    const { data, error } = await supabase
+        .from('learning_videos')
+        .select('*');
+
+    if (error) {
+        console.error('Error fetching learning videos:', error);
+        throw error;
+    }
+    
+    const videosByCategory: Record<string, Video[]> = {};
+    
+    if (data) {
+        for (const row of data) {
+            const video: Video = {
+                id: row.id,
+                title: row.title,
+                duration: row.duration,
+                thumbnailUrl: row.thumbnail_url,
+                platform: 'youtube',
+            };
+            const categoryId = row.category_id;
+            if (!videosByCategory[categoryId]) {
+                videosByCategory[categoryId] = [];
+            }
+            videosByCategory[categoryId].push(video);
         }
+    }
+    
+    return videosByCategory;
+};
+
+export const addLearningVideos = async (videos: (Video & { category_id: string })[]): Promise<void> => {
+    const videosToInsert = videos.map(v => ({
+        id: v.id,
+        category_id: v.category_id,
+        platform: v.platform,
+        title: v.title,
+        duration: v.duration,
+        thumbnail_url: v.thumbnailUrl,
+    }));
+    const { error } = await supabase.from('learning_videos').insert(videosToInsert);
+    if (error) {
+        console.error("Supabase insert error in addLearningVideos:", error);
+        throw error;
+    }
+};
+
+// --- Music ---
+const songFromRow = (s: any): Song => ({
+    id: s.id,
+    title: s.title,
+    artist: s.artist,
+    url: s.url,
+    storagePath: s.storagePath,
+});
+
+
+export const setupPlaylistListener = (callback: (playlist: Song[], error: PostgrestError | null) => void) => {
+     const fetchPlaylist = async () => {
+        const { data, error } = await supabase
+            .from('songs')
+            .select('*')
+            .order('created_at', { ascending: true });
+        
+        callback(data ? data.map(songFromRow) : [], error);
     };
 
-    handleStateUpdate();
-
-    const channel = supabase.channel('public:radio_state')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'radio_state', filter: 'id=eq.1' }, handleStateUpdate)
+    fetchPlaylist();
+    
+    const channel = supabase.channel('songs-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'songs' }, fetchPlaylist)
         .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-};
-
-
-// --- Presence (Online & Typing Status) ---
-let presenceChannel: RealtimeChannel;
-
-export const setupPresence = (
-    user: User,
-    onlineCallback: (users: OnlineUser[]) => void,
-    typingCallback: (users: string[]) => void
-) => {
-    presenceChannel = supabase.channel(`meeting-presence`, {
-        config: {
-            presence: { key: user.name },
-        },
-    });
-
-    const handlePresence = () => {
-        const presenceState = presenceChannel.presenceState<{ name: string; avatarUrl: string; isTyping: boolean }>();
-        const onlineUsers: OnlineUser[] = [];
-        const typingUsers: string[] = [];
-
-        Object.values(presenceState).forEach(presences => {
-            const primaryPresence = presences[0];
-            if (primaryPresence) {
-                onlineUsers.push({ name: primaryPresence.name, avatarUrl: primaryPresence.avatarUrl });
-                if (primaryPresence.isTyping) {
-                    typingUsers.push(primaryPresence.name);
-                }
-            }
-        });
-
-        onlineCallback(onlineUsers);
-        typingCallback(typingUsers);
-    };
-
-    presenceChannel
-        .on('presence', { event: 'sync' }, handlePresence)
-        .subscribe(async (status) => {
-            if (status === 'SUBSCRIBED') {
-                await presenceChannel.track({ name: user.name, avatarUrl: user.avatarUrl, isTyping: false });
-            }
-        });
-
     return () => {
-        if (presenceChannel) {
-            presenceChannel.untrack();
-            supabase.removeChannel(presenceChannel);
-        }
+        supabase.removeChannel(channel).catch(console.error);
     };
 };
 
-// --- Actions ---
-
-export const createProject = async (projectData: Omit<Project, 'id' | 'createdAt'>) => {
-    const { error } = await supabase.from('projects').insert({ ...projectData, createdAt: new Date().toISOString() });
-    if (error) throw error;
-};
-
-export const updateProject = async (projectId: string, updatedData: Partial<Project>) => {
-    const { error } = await supabase.from('projects').update(updatedData).eq('id', projectId);
-    if (error) throw error;
-};
-
-export const sendMessage = async (user: string, text: string, avatarUrl: string) => {
-    const { error } = await supabase.from('meeting_messages').insert({
-        user,
-        text,
-        avatarUrl,
-        timestamp: new Date().toISOString()
-    });
-    if (error) {
-        console.error('Error sending message:', error);
-        throw new Error("A mensagem não pôde ser enviada.");
-    }
-};
-
-export const clearMeetingChat = async () => {
-    const { error } = await supabase.from('meeting_messages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (error) {
-        console.error("Error clearing chat:", error);
-        throw error;
-    }
-};
-
-export const updateTypingStatus = async (user: User, isTyping: boolean) => {
-    if (presenceChannel) {
-        const status = await presenceChannel.track({ name: user.name, avatarUrl: user.avatarUrl, isTyping });
-        if (status !== 'ok') {
-             console.warn(`Failed to update typing status for ${user.name}: ${status}`);
-        }
-    }
-};
-
-export const updateUserPresence = async (user: User) => {
-    if (presenceChannel) {
-        // Assume user is not typing when their avatar changes.
-        const status = await presenceChannel.track({ name: user.name, avatarUrl: user.avatarUrl, isTyping: false });
-        if (status !== 'ok') {
-            console.warn(`Failed to update presence for ${user.name}: ${status}`);
-        }
-    }
-};
-
-export const goOffline = (userName: string) => {
-    if(presenceChannel) {
-        presenceChannel.untrack();
-    }
-};
-
-// Learning Videos Actions
-export const seedInitialVideos = async (categories: LearningCategory[]): Promise<void> => {
-    const allVideosToInsert = categories.flatMap(category => 
-        category.videos.map(video => ({
-            id: video.id,
-            category_id: category.id,
-            platform: video.platform || 'youtube',
-            title: video.title,
-            duration: video.duration,
-            thumbnail_url: video.thumbnailUrl,
-        }))
-    );
-
-    try {
-        // Step 1: Delete all existing videos to ensure a clean slate.
-        // This is a destructive operation that resets the content to match `data.ts`.
-        const { error: deleteError } = await supabase
-            .from('learning_videos')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000'); // A safe way to delete all rows
-
-        if (deleteError) {
-            throw deleteError;
-        }
-        console.log("Successfully cleared existing learning videos.");
-
-        // Step 2: Only insert if there are new videos to add.
-        if (allVideosToInsert.length > 0) {
-            const { error: insertError } = await supabase
-                .from('learning_videos')
-                .insert(allVideosToInsert);
-
-            if (insertError) {
-                throw insertError;
-            }
-            console.log(`Successfully seeded ${allVideosToInsert.length} curated initial videos.`);
-        } else {
-            console.log("No new initial videos to insert. Database is now empty.");
-        }
-
-    } catch (error: any) {
-        const formattedError = formatSupabaseError(error, 'conteúdo inicial das trilhas');
-        throw new Error(formattedError || "Falha ao sincronizar o conteúdo inicial das trilhas de conhecimento.");
-    }
-};
-
-
-export const addVideos = async (categoryId: string, platform: string, videos: Video[]) => {
-    const videosToInsert = videos.map(video => ({
-        id: video.id,
-        category_id: categoryId,
-        platform: platform,
-        title: video.title,
-        duration: video.duration,
-        thumbnail_url: video.thumbnailUrl,
-    }));
-
-    const { error } = await supabase.from('learning_videos').upsert(videosToInsert);
-    if (error) {
-        console.error("Error adding videos to Supabase:", error);
-        throw error;
-    }
-};
-
-// User Progress Actions
-export const getUserProgress = async (userName: string): Promise<Set<string>> => {
-    const { data, error } = await supabase
-        .from('user_progress')
-        .select('watched_video_ids')
-        .eq('user_name', userName)
-        .single();
-
-    if (error && error.code !== 'PGRST116') { // PGRST116: "object not found" - this is fine for new users
-        console.error('Error fetching user progress:', error);
-        return new Set();
-    }
-    return new Set(data?.watched_video_ids || []);
-};
-
-export const updateUserProgress = async (userName: string, watchedVideos: Set<string>): Promise<void> => {
-    const { error } = await supabase
-        .from('user_progress')
-        .upsert({ 
-            user_name: userName, 
-            watched_video_ids: Array.from(watchedVideos),
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'user_name' });
-
-    if (error) {
-        console.error("Error updating user progress:", error);
-        throw error;
-    }
-};
-
-
-// Music Actions
 export const uploadSong = async (file: File, title: string, artist: string): Promise<void> => {
     if (!file.type.startsWith('audio/')) throw new Error("File is not an audio type.");
 
-    const sanitizedFileName = sanitizeFileName(file.name);
-    const storagePath = `public/${Date.now()}_${sanitizedFileName}`;
+    const storagePath = `music/${Date.now()}_${file.name}`;
     
-    try {
-        const { error: uploadError } = await supabase.storage.from('music').upload(storagePath, file);
-        if (uploadError) throw uploadError;
+    const { error: uploadError } = await supabase.storage
+        .from('music') // Bucket name
+        .upload(storagePath, file);
+    if (uploadError) throw uploadError;
 
-        const { data } = supabase.storage.from('music').getPublicUrl(storagePath);
-        const downloadURL = data.publicUrl;
+    const { data: urlData } = supabase.storage.from('music').getPublicUrl(storagePath);
+    if (!urlData) throw new Error("Could not get public URL for song.");
 
-        const { error: dbError } = await supabase.from('songs').insert({ title, artist, url: downloadURL, storagePath: storagePath });
-        if (dbError) throw dbError;
-    } catch (error) {
-        const err = error as StorageError;
-        console.error("Supabase Storage Error:", err);
-        if (err.message?.includes("Bucket not found")) {
-            throw new Error(`Erro de Configuração: O "bucket" de armazenamento 'music' não foi encontrado. \n\nCOMO RESOLVER:\n1. Vá para seu painel do Supabase.\n2. Clique em 'Storage' no menu lateral.\n3. Clique em 'New bucket'.\n4. Dê o nome 'music' (exatamente) e ative a opção 'Public bucket'.\n5. Vá para 'Bucket settings' -> 'Policies' e adicione uma nova política para permitir uploads públicos (INSERT).`);
-        }
-        throw err;
-    }
+    const { error: insertError } = await supabase.from('songs').insert({
+        title,
+        artist,
+        url: urlData.publicUrl,
+        storagePath: storagePath
+    });
+    if (insertError) throw insertError;
 };
 
 export const deleteSong = async (song: Song): Promise<void> => {
     const { error: storageError } = await supabase.storage.from('music').remove([song.storagePath]);
     if (storageError) {
-        console.warn(`Could not delete song from storage (path: ${song.storagePath}):`, storageError.message);
+        console.error("Error deleting from storage (might be ok if file was already gone):", storageError);
     }
 
     const { error: dbError } = await supabase.from('songs').delete().eq('id', song.id);
     if (dbError) throw dbError;
 };
 
-// Radio Actions
-export const updateRadioState = async (state: Partial<RadioState>) => {
-    const { error } = await supabase
-        .from('radio_state')
-        .upsert({ ...state, id: 1 }, { onConflict: 'id' });
-    if (error) {
-        console.error('Error updating radio state:', error);
-        throw error;
-    }
+
+// --- Radio State ---
+
+export const setupRadioStateListener = (callback: (state: RadioState | null, error: PostgrestError | null) => void) => {
+     const fetchState = async () => {
+        const { data, error } = await supabase
+            .from('radio_state')
+            .select('*')
+            .eq('id', 1)
+            .single();
+
+        callback(data, error);
+    };
+    
+    fetchState();
+
+    const channel = supabase.channel('radio-state-channel')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'radio_state', filter: 'id=eq.1' }, (payload) => {
+            callback(payload.new as RadioState, null);
+        })
+        .subscribe();
+        
+    return () => {
+        supabase.removeChannel(channel).catch(console.error);
+    };
+};
+
+export const updateRadioState = async (newState: Partial<Omit<RadioState, 'id'>>): Promise<void> => {
+    const { error } = await supabase.from('radio_state').update(newState).eq('id', 1);
+    if (error) throw error;
+};
+
+// --- Presence (Placeholder) ---
+// Note: The original app uses Firebase for presence. This is a placeholder.
+export const goOffline = (userName: string) => {
+    console.log(`[Supabase] User ${userName} going offline (no-op). See firebaseService.ts for actual implementation.`);
 };

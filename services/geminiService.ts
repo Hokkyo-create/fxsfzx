@@ -141,21 +141,21 @@ const parsePipedVideoResponse = (data: any, existingVideoIds: Set<string>): Vide
 
 // Curated list of public instances (Updated for reliability)
 const invidiousApiInstances = [
-    'https://invidious.no-logs.com',
-    'https://vid.priv.au',
+    'https://vid.puffyan.us',
+    'https://invidious.lunar.icu',
+    'https://invidious.protokoll.fi',
+    'https://invidious.incogniweb.net',
     'https://iv.melmac.space',
-    'https://invidious.privacydev.net',
-    'https://inv.n8p.xyz',
-    'https://invidious.drgns.space',
+    'https://invidious.tiekoetter.com',
 ];
 
 const pipedApiInstances = [
-    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.privacy.com.de',
+    'https://pipedapi.in.projectsegfau.lt',
     'https://pipedapi.smnz.de',
-    'https://pipedapi.adminforge.de',
-    'https://pipedapi.moomoo.me',
-    'https://api-piped.mha.fi',
-    'https://piped-api.lunar.icu',
+    'https://pipedapi.frontend.la',
+    'https://piped-api.work.ink',
+    'https://pipedapi.drgns.space',
 ];
 
 
