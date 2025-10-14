@@ -1,108 +1,79 @@
-import React, { useState, useEffect } from 'react';
-import type { User, Project, ProjectGenerationConfig } from '../types';
+import React from 'react';
+import type { Project } from '../types';
 import Icon from './Icons';
-import Avatar from './Avatar';
 import ProjectCard from './ProjectCard';
-import CreateProjectModal from './CreateProjectModal';
-import { setupProjectsListener } from '../services/supabaseService';
+import Section from './Section';
 
 interface ProjectsPageProps {
-    user: User;
+    projects: Project[];
+    isLoading: boolean;
     onBack: () => void;
     onSelectProject: (project: Project) => void;
-    onStartGeneration: (config: ProjectGenerationConfig) => void;
+    onCreateProject: () => void;
+    onDeleteProject: (projectId: string) => void;
 }
 
-const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, onBack, onSelectProject, onStartGeneration }) => {
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+const ProjectCardSkeleton: React.FC = () => (
+    <div className="aspect-[3/4] bg-dark/60 rounded-lg animate-pulse"></div>
+);
 
-    useEffect(() => {
-        const unsubscribe = setupProjectsListener((projectData, err) => {
-            if (err) {
-                console.error("Failed to fetch projects:", err);
-                setError("Não foi possível carregar os projetos. Tente novamente mais tarde.");
-            } else {
-                setProjects(projectData);
-                setError(null);
-            }
-        });
-
-        return unsubscribe;
-    }, []);
-
-    const handleStartGeneration = (config: ProjectGenerationConfig) => {
-        setIsCreateModalOpen(false);
-        onStartGeneration(config);
-    };
-
+const ProjectsPage: React.FC<ProjectsPageProps> = ({ projects, isLoading, onBack, onSelectProject, onCreateProject, onDeleteProject }) => {
     return (
-        <>
-            <div className="min-h-screen bg-darker text-white font-sans flex flex-col animate-fade-in">
-                {/* Header */}
-                <header className="bg-dark border-b border-gray-900 sticky top-0 z-20 flex-shrink-0">
-                    <div className="container mx-auto px-4 sm:px-6 py-4">
-                        <div className="flex items-center justify-between">
+        <div className="min-h-screen bg-darker text-white font-sans animate-fade-in">
+            <header className="bg-dark border-b border-gray-900 sticky top-0 z-20 flex-shrink-0">
+                <div className="container mx-auto px-4 sm:px-6 py-3">
+                    <div className="flex items-center justify-between">
+                         <div className="flex items-center">
+                            <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-4">
+                                <Icon name="ChevronLeft" className="w-6 h-6" />
+                            </button>
                             <div className="flex items-center gap-3">
-                                <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2">
-                                    <Icon name="ChevronLeft" className="w-6 h-6" />
-                                </button>
                                 <Icon name="BookOpen" className="w-8 h-8 text-brand-red" />
                                 <div>
                                     <h1 className="text-xl font-display tracking-wider text-white">Área de Projetos</h1>
-                                    <p className="text-xs text-gray-400">Crie, visualize e gerencie seus projetos de IA.</p>
+                                    <p className="text-xs text-gray-400">Crie e gerencie ebooks com o poder da IA</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-4">
-                               <div className="flex items-center gap-2 text-sm text-gray-400">
-                                   <Avatar src={user.avatarUrl} name={user.name} size="sm" />
-                                   <span className="hidden md:inline">{user.name}</span>
-                               </div>
-                                <button 
-                                    onClick={() => setIsCreateModalOpen(true)}
-                                    className="flex items-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition-transform transform hover:scale-105"
-                                >
-                                    <Icon name="Plus" className="w-5 h-5" />
-                                    <span className="hidden sm:inline">Novo Projeto</span>
-                                </button>
-                            </div>
                         </div>
+                        <button 
+                            onClick={onCreateProject}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md transition-colors bg-brand-red hover:bg-red-700 text-white"
+                        >
+                            <Icon name="Plus" className="w-5 h-5" />
+                            <span>Novo Projeto</span>
+                        </button>
                     </div>
-                </header>
-
-                {/* Main Content */}
-                <main className="flex-grow container mx-auto px-4 sm:px-6 py-8">
-                    {error ? (
-                        <div className="text-center text-red-400 p-8 bg-red-900/20 border border-red-500/30 rounded-lg">{error}</div>
-                    ) : projects.length === 0 ? (
-                        <div className="text-center py-16 text-gray-500">
-                            <Icon name="BookOpen" className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                            <h2 className="text-xl font-semibold text-gray-300">Nenhum projeto encontrado.</h2>
-                            <p className="mt-2">Clique em "Novo Projeto" para começar a criar com a ajuda da IA.</p>
+                </div>
+            </header>
+            
+            <main className="container mx-auto px-4 sm:px-6 py-8">
+                <Section title="Seus Projetos">
+                    {isLoading ? (
+                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                            {Array.from({ length: 6 }).map((_, index) => <ProjectCardSkeleton key={index} />)}
                         </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                            {projects.map(project => (
+                    ) : projects.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                            {projects.map((project, index) => (
                                 <ProjectCard
                                     key={project.id}
                                     project={project}
                                     onClick={() => onSelectProject(project)}
-                                    style={{}}
+                                    onDelete={onDeleteProject}
+                                    style={{ animationDelay: `${index * 50}ms` }}
                                 />
                             ))}
                         </div>
+                    ) : (
+                         <div className="text-center py-16 px-8 bg-dark/50 border-2 border-dashed border-gray-800 rounded-lg">
+                            <Icon name="BookOpen" className="w-16 h-16 text-gray-700 mx-auto mb-4" />
+                            <h3 className="text-xl font-display text-white">Nenhum projeto encontrado</h3>
+                            <p className="text-gray-500 mt-2">Clique em "Novo Projeto" para começar a criar seu primeiro ebook com IA.</p>
+                        </div>
                     )}
-                </main>
-            </div>
-            
-            <CreateProjectModal 
-                isOpen={isCreateModalOpen}
-                onClose={() => setIsCreateModalOpen(false)}
-                user={user}
-                onStartGeneration={handleStartGeneration}
-            />
-        </>
+                </Section>
+            </main>
+        </div>
     );
 };
 

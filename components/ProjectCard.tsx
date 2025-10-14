@@ -1,47 +1,57 @@
 import React from 'react';
 import type { Project } from '../types';
-import Icon from './Icons';
 import Avatar from './Avatar';
+import Icon from './Icons';
 
 interface ProjectCardProps {
     project: Project;
     onClick: () => void;
-    style: React.CSSProperties;
+    onDelete: (projectId: string) => void;
+    style?: React.CSSProperties;
 }
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick, style }) => {
-    const { name, createdBy, avatarUrl, createdAt, coverImageUrl } = project;
-    
+const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick, onDelete, style }) => {
+    const projectName = project.name || 'Sem Título';
+    const fallbackCover = `https://placehold.co/600x800/0A0A0A/E50914?text=${encodeURIComponent(projectName.substring(0, 2))}`;
+
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent card's main onClick
+        if (window.confirm(`Tem certeza que deseja apagar o projeto "${projectName}"? Esta ação é irreversível.`)) {
+            onDelete(project.id);
+        }
+    };
+
     return (
-        <div 
+        <div
             onClick={onClick}
             style={style}
-            className="group bg-dark border border-gray-800 rounded-lg flex flex-col transition-all duration-300 hover:border-brand-red/50 hover:shadow-2xl hover:shadow-brand-red/10 transform hover:-translate-y-1 cursor-pointer relative overflow-hidden animate-pop-in aspect-[3/4]"
+            className="group relative aspect-[3/4] bg-dark/60 rounded-lg overflow-hidden cursor-pointer transition-all duration-300 transform hover:-translate-y-2 shadow-lg shadow-black/40 hover:shadow-2xl hover:shadow-brand-red/30 animate-stagger-in"
         >
-            {coverImageUrl ? (
-                <>
-                    <img src={coverImageUrl} alt={`Capa de ${name}`} className="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-30 transition-opacity duration-300" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-dark via-dark/70 to-transparent"></div>
-                </>
-            ) : (
-                <div className="absolute -top-10 -right-10 w-28 h-28 text-gray-800/50 opacity-10 group-hover:opacity-20 group-hover:rotate-6 transition-all duration-500">
-                     <Icon name="BookOpen" className="w-full h-full" />
-                </div>
-            )}
-            
-            <div className="flex-grow z-10 p-5 flex flex-col justify-end">
-                <h3 className="text-xl font-display tracking-wider text-white line-clamp-3" title={name}>{name}</h3>
-            </div>
-
-            <div className="mt-auto z-10 border-t border-gray-800 p-4 bg-dark/50">
-                <div className="flex justify-between items-center text-xs text-gray-400">
-                    <div className="flex items-center gap-2">
-                        <Avatar src={avatarUrl} name={createdBy} size="sm" />
-                        <span>{createdBy}</span>
-                    </div>
-                    <span>{new Date(createdAt).toLocaleDateString('pt-BR')}</span>
+            <img 
+                src={project.coverImageUrl || fallbackCover} 
+                alt={`Capa de ${projectName}`} 
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent"></div>
+            <div className="absolute bottom-0 left-0 p-4 w-full">
+                <h3 className="text-lg font-bold text-white leading-tight line-clamp-2" title={projectName}>
+                    {projectName}
+                </h3>
+                <div className="flex items-center gap-2 mt-2">
+                    <Avatar src={project.avatarUrl} name={project.createdBy} size="sm" />
+                    <span className="text-xs text-gray-300">{project.createdBy}</span>
                 </div>
             </div>
+            <div className="absolute top-2 right-2 p-2 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                <Icon name="BookOpen" className="w-4 h-4 text-white" />
+            </div>
+            <button 
+                onClick={handleDelete}
+                className="absolute top-2 left-2 p-2 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:bg-brand-red hover:text-white"
+                title="Apagar Projeto"
+            >
+                <Icon name="Trash" className="w-4 h-4" />
+            </button>
         </div>
     );
 }

@@ -64,12 +64,26 @@ export const createProject = async (projectData: Omit<Project, 'id' | 'createdAt
 };
 
 export const updateProject = async (projectId: string, updatedData: Partial<Project>): Promise<void> => {
+    const updatePayload: any = {};
+    if (updatedData.name) updatePayload.name = updatedData.name;
+    if (updatedData.introduction) updatePayload.introduction = updatedData.introduction;
+    if (updatedData.conclusion) updatePayload.conclusion = updatedData.conclusion;
+    if (updatedData.coverImageUrl) updatePayload.cover_image_url = updatedData.coverImageUrl;
+    if (updatedData.chapters) updatePayload.chapters = updatedData.chapters;
+
+    if (Object.keys(updatePayload).length === 0) return;
+
     const { error } = await supabase
         .from('projects')
-        .update({
-            cover_image_url: updatedData.coverImageUrl,
-            chapters: updatedData.chapters,
-        })
+        .update(updatePayload)
+        .eq('id', projectId);
+    if (error) throw error;
+};
+
+export const deleteProject = async (projectId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('projects')
+        .delete()
         .eq('id', projectId);
     if (error) throw error;
 };
@@ -170,12 +184,25 @@ export const setupPlaylistListener = (callback: (playlist: Song[], error: Postgr
 export const uploadSong = async (file: File, title: string, artist: string): Promise<void> => {
     if (!file.type.startsWith('audio/')) throw new Error("File is not an audio type.");
 
-    const storagePath = `music/${Date.now()}_${file.name}`;
+    const sanitizeFilename = (filename: string) => {
+        // Replace spaces with underscores and remove characters that are problematic for URLs/paths
+        return filename.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+    };
+    
+    const sanitizedName = sanitizeFilename(file.name);
+    const storagePath = `public/${Date.now()}_${sanitizedName}`;
     
     const { error: uploadError } = await supabase.storage
         .from('music') // Bucket name
         .upload(storagePath, file);
-    if (uploadError) throw uploadError;
+
+    if (uploadError) {
+         // Try to provide a more specific error message if possible
+        if (uploadError.message.includes("Bucket not found")) {
+             throw new Error('Erro de Configuração: O "bucket" de armazenamento \'music\' não foi encontrado. COMO RESOLVER: 1. Vá para seu painel do Supabase. 2. Clique em \'Storage\' no menu lateral. 3. Clique em \'New bucket\'. 4. Dê o nome \'music\' (exatamente) e ative a opção \'Public bucket\'. 5. Vá para \'Bucket settings\' -> \'Policies\' e adicione uma nova política para permitir uploads públicos (INSERT).');
+        }
+        throw uploadError;
+    }
 
     const { data: urlData } = supabase.storage.from('music').getPublicUrl(storagePath);
     if (!urlData) throw new Error("Could not get public URL for song.");

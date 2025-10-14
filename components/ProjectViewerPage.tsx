@@ -21,6 +21,7 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
     const [editingImage, setEditingImage] = useState<{ type: 'cover' | 'chapter'; index: number; } | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
     
     // State for new modals
     const [videoModalProject, setVideoModalProject] = useState<Project | null>(null);
@@ -60,10 +61,14 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
         setIsSaving(true);
         try {
             await updateProject(editableProject.id, {
+                name: editableProject.name,
+                introduction: editableProject.introduction,
+                conclusion: editableProject.conclusion,
                 coverImageUrl: editableProject.coverImageUrl,
                 chapters: editableProject.chapters,
             });
             setHasChanges(false);
+            setIsEditing(false);
             window.dispatchEvent(new CustomEvent('app-notification', { 
                 detail: { type: 'info', message: 'Alterações salvas com sucesso!' }
             }));
@@ -76,6 +81,32 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
             setIsSaving(false);
         }
     }
+
+    const handleToggleEdit = () => {
+        if (isEditing && hasChanges) {
+            if (!window.confirm("Você tem alterações não salvas. Deseja descartá-las?")) {
+                return;
+            }
+        }
+        if (isEditing) {
+            // Cancel editing, reset changes
+            setEditableProject(project);
+            setHasChanges(false);
+        }
+        setIsEditing(!isEditing);
+    };
+
+    const handleTextChange = (field: 'name' | 'introduction' | 'conclusion', value: string) => {
+        setEditableProject(prev => ({ ...prev, [field]: value }));
+        setHasChanges(true);
+    };
+
+    const handleChapterChange = (index: number, field: 'title' | 'content', value: string) => {
+        const updatedChapters = [...editableProject.chapters];
+        updatedChapters[index] = { ...updatedChapters[index], [field]: value };
+        setEditableProject(prev => ({ ...prev, chapters: updatedChapters }));
+        setHasChanges(true);
+    };
     
     const renderMarkdownContent = (text: string) => {
         return text.split('\n').map((paragraph, index) => (
@@ -92,6 +123,8 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
             return await generateImagePromptForText(chapter.title, chapter.content);
         }
     };
+
+    const commonTextAreaProps = "w-full bg-gray-900/50 border border-gray-700 rounded-md py-2 px-4 text-gray-300 leading-relaxed focus:ring-2 focus:ring-brand-red focus:border-brand-red transition";
 
     return (
         <>
@@ -111,6 +144,13 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
                             </div>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap justify-end">
+                            <button
+                                onClick={handleToggleEdit}
+                                className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${isEditing ? 'bg-brand-red' : 'bg-gray-700 hover:bg-gray-600'}`}
+                            >
+                                <Icon name="Pencil" className="w-4 h-4" />
+                                <span className="text-sm font-semibold hidden sm:inline">{isEditing ? 'Sair da Edição' : 'Editar'}</span>
+                            </button>
                              {hasChanges && (
                                 <button
                                     onClick={handleSaveChanges}
@@ -121,30 +161,34 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
                                     <span className="text-sm font-semibold hidden sm:inline">{isSaving ? 'Salvando...' : 'Salvar'}</span>
                                 </button>
                             )}
-                            <button 
-                                onClick={handleDownloadPdf}
-                                disabled={isDownloading}
-                                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-brand-red hover:bg-red-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
-                            >
-                                <Icon name="Download" className="w-4 h-4" />
-                                <span className="text-sm font-semibold hidden sm:inline">{isDownloading ? 'Baixando...' : 'Baixar PDF'}</span>
-                            </button>
-                            <button
-                                onClick={() => setVideoModalProject(editableProject)}
-                                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 transition-colors"
-                                title="Fazer Vídeo do Ebook"
-                            >
-                                <Icon name="Film" className="w-4 h-4" />
-                                <span className="text-sm font-semibold hidden sm:inline">Vídeo</span>
-                            </button>
-                            <button
-                                onClick={() => setInteractiveModalProject(editableProject)}
-                                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 transition-colors"
-                                title="Fazer Ebook Interativo"
-                            >
-                                <Icon name="Sparkles" className="w-4 h-4" />
-                                <span className="text-sm font-semibold hidden sm:inline">Interativo</span>
-                            </button>
+                            {!isEditing && (
+                                <>
+                                    <button 
+                                        onClick={handleDownloadPdf}
+                                        disabled={isDownloading}
+                                        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-brand-red hover:bg-red-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                                    >
+                                        <Icon name="Download" className="w-4 h-4" />
+                                        <span className="text-sm font-semibold hidden sm:inline">{isDownloading ? 'Baixando...' : 'Baixar PDF'}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setVideoModalProject(editableProject)}
+                                        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 transition-colors"
+                                        title="Fazer Vídeo do Ebook"
+                                    >
+                                        <Icon name="Film" className="w-4 h-4" />
+                                        <span className="text-sm font-semibold hidden sm:inline">Vídeo</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setInteractiveModalProject(editableProject)}
+                                        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 transition-colors"
+                                        title="Fazer Ebook Interativo"
+                                    >
+                                        <Icon name="Sparkles" className="w-4 h-4" />
+                                        <span className="text-sm font-semibold hidden sm:inline">Interativo</span>
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 </header>
@@ -159,14 +203,42 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
                             </div>
                         )}
                     <div className="p-8 md:p-12">
-                        <h1 className="text-4xl md:text-5xl font-display text-white mb-8 border-b-2 border-brand-red pb-4">{editableProject.name}</h1>
+                        {isEditing ? (
+                            <input
+                                type="text"
+                                value={editableProject.name}
+                                onChange={e => handleTextChange('name', e.target.value)}
+                                className={`w-full text-4xl md:text-5xl font-display mb-8 p-2 ${commonTextAreaProps}`}
+                            />
+                        ) : (
+                             <h1 className="text-4xl md:text-5xl font-display text-white mb-8 border-b-2 border-brand-red pb-4">{editableProject.name}</h1>
+                        )}
                         
                         <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">Introdução</h3>
-                        {renderMarkdownContent(editableProject.introduction)}
+                        {isEditing ? (
+                             <textarea 
+                                value={editableProject.introduction} 
+                                onChange={e => handleTextChange('introduction', e.target.value)} 
+                                rows={10} 
+                                className={commonTextAreaProps}
+                            />
+                        ) : (
+                             renderMarkdownContent(editableProject.introduction)
+                        )}
 
                         {editableProject.chapters?.map((chapter, index) => (
                             <div key={index}>
-                                <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">{chapter.title}</h3>
+                                {isEditing ? (
+                                    <input
+                                        type="text"
+                                        value={chapter.title}
+                                        onChange={e => handleChapterChange(index, 'title', e.target.value)}
+                                        className={`w-full text-2xl font-display text-brand-red mt-8 mb-4 p-2 ${commonTextAreaProps}`}
+                                    />
+                                ) : (
+                                    <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">{chapter.title}</h3>
+                                )}
+
                                 {chapter.imageUrl && (
                                     <div className="my-6 relative group">
                                         <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full rounded-lg object-cover" />
@@ -175,12 +247,30 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack }
                                         </button>
                                     </div>
                                 )}
-                                {renderMarkdownContent(chapter.content)}
+                                {isEditing ? (
+                                     <textarea 
+                                        value={chapter.content} 
+                                        onChange={e => handleChapterChange(index, 'content', e.target.value)} 
+                                        rows={20} 
+                                        className={commonTextAreaProps}
+                                    />
+                                ) : (
+                                    renderMarkdownContent(chapter.content)
+                                )}
                             </div>
                         ))}
 
                         <h3 className="text-2xl font-display text-brand-red mt-8 mb-4">Conclusão</h3>
-                        {renderMarkdownContent(editableProject.conclusion)}
+                        {isEditing ? (
+                             <textarea 
+                                value={editableProject.conclusion} 
+                                onChange={e => handleTextChange('conclusion', e.target.value)} 
+                                rows={10} 
+                                className={commonTextAreaProps}
+                            />
+                        ) : (
+                            renderMarkdownContent(editableProject.conclusion)
+                        )}
                     </div>
                     </div>
                 </main>
