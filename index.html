@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w.org/2000/svg' viewBox='0 0 192 192'%3E%3Cpath d='M16 52 h64 l24 -24 h72 v132 H16 z' fill='%23141414' stroke='%23E50914' stroke-width='6' stroke-linejoin='round'/%3E%3Ctext x='50%25' y='58%25' dominant-baseline='central' text-anchor='middle' font-size='120' font-family='Bebas Neue, sans-serif' fill='%23E50914' dy='.1em' style='text-shadow: 0 0 8px %23E50914;'%3E7%3C/text%3E%3C/svg%3E" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Cpath d='M16 52 h64 l24 -24 h72 v132 H16 z' fill='%23141414' stroke='%23E50914' stroke-width='6' stroke-linejoin='round'/%3E%3Ctext x='50%25' y='58%25' dominant-baseline='central' text-anchor='middle' font-size='120' font-family='Bebas Neue, sans-serif' fill='%23E50914' dy='.1em' style='text-shadow: 0 0 8px %23E50914;'%3E7%3C/text%3E%3C/svg%3E" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ARC7HIVE | Projeto Evolution</title>
     <link rel="manifest" href="/manifest.json" />
@@ -95,6 +95,15 @@
             transform: scale(1.1);
         }
 
+        @media (max-width: 640px) {
+            .player-panel-mobile-in {
+                animation: playerPanelMobileIn 0.3s ease-out forwards;
+            }
+            .player-panel-mobile-out {
+                 animation: playerPanelMobileOut 0.3s ease-out forwards;
+            }
+        }
+
 
         /* PDF Export Styles */
         .pdf-export-mode {
@@ -177,6 +186,7 @@
               'player-pulse': 'playerPulse 3s infinite ease-in-out',
               'player-panel-in': 'playerPanelIn 0.3s ease-out forwards',
               'player-panel-out': 'playerPanelOut 0.3s ease-in forwards',
+              'player-panel-mobile-in': 'playerPanelMobileIn 0.3s ease-out forwards',
             },
             keyframes: {
               'pan-grid': {
@@ -212,16 +222,24 @@
                 '50%': { filter: 'brightness(1.6) drop-shadow(0 0 15px #E50914)', opacity: '1' },
               },
                playerPulse: {
-                '0%, 100%': { boxShadow: '0 0 0 0 rgba(229, 9, 20, 0.5)' },
-                '50%': { boxShadow: '0 0 20px 10px rgba(229, 9, 20, 0)' },
+                '0%, 100%': { filter: 'drop-shadow(0 0 2px #E50914)', color: '#E50914' },
+                '50%': { filter: 'drop-shadow(0 0 10px #E50914)', color: '#fff' },
               },
               playerPanelIn: {
-                  '0%': { opacity: 0, transform: 'scale(0.95) translateY(10px)' },
-                  '100%': { opacity: 1, transform: 'scale(1) translateY(0)' },
+                  '0%': { opacity: 0, transform: 'translateX(-100%)' },
+                  '100%': { opacity: 1, transform: 'translateX(0)' },
               },
               playerPanelOut: {
-                  '0%': { opacity: 1, transform: 'scale(1) translateY(0)' },
-                  '100%': { opacity: 0, transform: 'scale(0.95) translateY(10px)' },
+                  '0%': { opacity: 1, transform: 'translateX(0)' },
+                  '100%': { opacity: 0, transform: 'translateX(-100%)' },
+              },
+              playerPanelMobileIn: {
+                  '0%': { opacity: 0, transform: 'translateY(100%)' },
+                  '100%': { opacity: 1, transform: 'translateY(0)' },
+              },
+              playerPanelMobileOut: {
+                  '0%': { opacity: 1, transform: 'translateY(0)' },
+                  '100%': { opacity: 0, transform: 'translateY(100%)' },
               },
               textGlitch: {
                   '0%': { transform: 'translate(0, 0) skew(0deg)', opacity: 1 },

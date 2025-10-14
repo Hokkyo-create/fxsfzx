@@ -18,8 +18,8 @@ interface MusicPlayerProps {
     playlist: Song[];
     error: string | null;
     onTrackChange: (track: { title: string; artist: string } | null) => void;
-    isRadioActive: boolean;
-    onToggleRadioActive: () => void;
+    isOpen: boolean;
+    onClose: () => void;
 }
 
 const formatTime = (time: number) => {
@@ -84,17 +84,17 @@ const UploadSongModal: React.FC<{onClose: () => void}> = ({ onClose }) => {
 }
 
 
-const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrackChange, isRadioActive, onToggleRadioActive }) => {
+const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrackChange, isOpen, onClose }) => {
     const [mode, setMode] = useState<'playlist' | 'youtube'>('playlist');
     const [youtubeTrack, setYoutubeTrack] = useState<YouTubeTrack | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [isExpanded, setIsExpanded] = useState(false);
     const [isPlayerReady, setIsPlayerReady] = useState(false);
     const [volume, setVolume] = useState(0.75);
     const [isMuted, setIsMuted] = useState(false);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [isRadioActive, setIsRadioActive] = useState(false);
     
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<YouTubeTrack[]>([]);
@@ -115,8 +115,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
     const currentPlaylistTrack = playlist.find(s => s.id === currentPlaylistTrackId);
     
     const currentTrack = mode === 'playlist' ? 
-        { title: currentPlaylistTrack?.title, artist: currentPlaylistTrack?.artist } : 
-        { title: youtubeTrack?.title, artist: youtubeTrack?.artist };
+        { title: currentPlaylistTrack?.title, artist: currentPlaylistTrack?.artist, art: null } : 
+        { title: youtubeTrack?.title, artist: youtubeTrack?.artist, art: youtubeTrack?.thumbnailUrl };
 
     // --- State Sync & Listeners ---
     useEffect(() => {
@@ -156,7 +156,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         }
         
         if (is_playing && audioRef.current.paused) {
-            audioRef.current.play().catch(e => console.log("Autoplay prevented"));
+            audioRef.current.play().catch(e => console.log("Autoplay prevented by browser."));
         } else if (!is_playing && !audioRef.current.paused) {
             audioRef.current.pause();
         }
@@ -222,11 +222,11 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
     };
     
     const togglePlayPause = () => {
-        if (!isRadioActive) {
-            onToggleRadioActive(); // Activate radio if not active
-            return;
-        }
         if (mode === 'playlist') {
+            if (!isRadioActive) {
+                setIsRadioActive(true);
+                return;
+            }
             if (!currentPlaylistTrack && playlist.length > 0) {
                 handleSelectPlaylistTrack(playlist[0]);
             } else {
@@ -239,7 +239,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
     };
 
     const handleSelectPlaylistTrack = (song: Song) => {
-        if (!isRadioActive) onToggleRadioActive();
+        if (!isRadioActive) setIsRadioActive(true);
         handleUpdateRadioState({ current_track_id: song.id, is_playing: true, track_progress_on_seek: 0 });
     };
     
@@ -318,67 +318,71 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
         });
     };
     
+    if (!isOpen) return null;
+
     return (
         <>
             <audio ref={audioRef} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => toTrack('next')} onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)} crossOrigin="anonymous" />
             <div id="youtube-player" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}></div>
             {isUploadModalOpen && <UploadSongModal onClose={() => setIsUploadModalOpen(false)} />}
             
-            <div className="fixed bottom-4 left-4 sm:left-8 z-50">
-                <button onClick={() => setIsExpanded(p => !p)} className={`w-16 h-16 bg-dark/80 backdrop-blur-sm border-2 border-brand-red rounded-full flex items-center justify-center shadow-lg transform transition-all hover:scale-110 ${isPlaying && isRadioActive ? 'animate-player-pulse' : ''}`}>
-                    <Icon name={isPlaying && isRadioActive ? "Pause" : "Play"} className="w-8 h-8 text-brand-red" />
-                </button>
-                
-                {isExpanded && (
-                 <div className="absolute bottom-0 left-0 w-full sm:w-[380px] mb-20 origin-bottom-left animate-player-panel-in" onClick={e => e.stopPropagation()}>
-                    <div className="bg-dark/90 backdrop-blur-sm border border-brand-red/30 rounded-lg shadow-2xl shadow-brand-red/20 flex flex-col w-full max-h-[75vh] sm:max-h-[600px]">
-                        <div className="p-4 flex-shrink-0">
-                             <div className="w-full aspect-square bg-gray-900/50 rounded-lg flex items-center justify-center text-brand-red overflow-hidden relative border border-gray-800">
-                                {mode === 'youtube' && youtubeTrack ? <img src={youtubeTrack.thumbnailUrl} alt={youtubeTrack.title} className="w-full h-full object-cover" /> : <Icon name="Heart" className="w-24 h-24 text-brand-red/50" />}
-                                <div className="absolute top-2 right-2 flex items-center gap-2">
-                                    <button onClick={() => setIsUploadModalOpen(true)} className="p-2 rounded-full bg-black/30 text-gray-300 hover:bg-brand-red hover:text-white transition-colors" title="Adicionar Música MP3"><Icon name="Upload" className="w-5 h-5" /></button>
-                                    <button onClick={() => setIsExpanded(false)} className="p-2 rounded-full bg-black/30 text-gray-300 hover:bg-brand-red hover:text-white transition-colors"><Icon name="X" className="w-5 h-5" /></button>
-                                </div>
-                             </div>
-                             <div className="text-center mt-4">
-                                <p className="text-lg font-bold text-white truncate" title={currentTrack?.title}>{currentTrack?.title || 'Rádio ARC7HIVE'}</p>
-                                <p className="text-sm text-gray-400 truncate" title={currentTrack?.artist}>{currentTrack?.artist || (isRadioActive ? 'Rádio Colaborativa' : 'Offline')}</p>
-                             </div>
-                             <div className="mt-3 flex items-center gap-2">
-                                <span className="text-xs text-gray-500">{formatTime(progress)}</span>
-                                <div ref={progressBarRef} onClick={handleProgressClick} className="flex-grow h-1.5 bg-gray-700 rounded-full cursor-pointer group">
-                                    <div className="h-full bg-brand-red rounded-full relative" style={{ width: duration > 0 ? `${(progress / duration) * 100}%` : '0%', filter: 'drop-shadow(0 0 3px #E50914)'}}>
-                                      <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity" style={{boxShadow: '0 0 6px 2px #E50914'}}></div>
-                                    </div>
-                                </div>
-                                <span className="text-xs text-gray-500">{formatTime(duration)}</span>
+            <div 
+                className={`fixed top-0 left-0 h-full w-80 bg-dark/90 backdrop-blur-sm border-r border-brand-red/30 shadow-2xl shadow-brand-red/20 flex flex-col z-40
+                    sm:animate-player-panel-in
+                    max-sm:bottom-0 max-sm:w-full max-sm:h-screen max-sm:border-r-0 max-sm:border-t max-sm:player-panel-mobile-in`}
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-4 flex-shrink-0">
+                     <div className="w-full aspect-square bg-gray-900/50 rounded-lg flex items-center justify-center text-brand-red overflow-hidden relative border border-gray-800">
+                        {currentTrack.art ? <img src={currentTrack.art} alt={currentTrack.title} className="w-full h-full object-cover" /> : <Icon name="Heart" className="w-24 h-24 text-brand-red/50" />}
+                        <button onClick={onClose} className="absolute top-2 right-2 p-2 rounded-full bg-black/30 text-gray-300 hover:bg-brand-red hover:text-white transition-colors"><Icon name="X" className="w-5 h-5" /></button>
+                     </div>
+                     <div className="text-center mt-4">
+                        <p className="text-lg font-bold text-white truncate" title={currentTrack?.title}>{currentTrack?.title || 'Rádio ARC7HIVE'}</p>
+                        <p className="text-sm text-gray-400 truncate" title={currentTrack?.artist}>{currentTrack?.artist || (isRadioActive ? 'Rádio Colaborativa' : 'Offline')}</p>
+                     </div>
+                     <div className="mt-3 flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{formatTime(progress)}</span>
+                        <div ref={progressBarRef} onClick={handleProgressClick} className="flex-grow h-1.5 bg-gray-700 rounded-full cursor-pointer group">
+                            <div className="h-full bg-brand-red rounded-full relative" style={{ width: duration > 0 ? `${(progress / duration) * 100}%` : '0%', filter: 'drop-shadow(0 0 3px #E50914)'}}>
+                              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity" style={{boxShadow: '0 0 6px 2px #E50914'}}></div>
                             </div>
-                             <div className="mt-4 flex items-center justify-center gap-6">
-                                <button onClick={() => toTrack('prev')} disabled={mode !== 'playlist'} className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-30"><Icon name="SkipBack" className="w-6 h-6"/></button>
-                                <button onClick={togglePlayPause} className="w-14 h-14 bg-brand-red rounded-full flex items-center justify-center text-white shadow-lg transform transition-transform hover:scale-110">
-                                    <Icon name={isPlaying && isRadioActive ? "Pause" : "Play"} className="w-7 h-7" />
-                                </button>
-                                <button onClick={() => toTrack('next')} disabled={mode !== 'playlist'} className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-30"><Icon name="SkipForward" className="w-6 h-6"/></button>
-                             </div>
-                             <div className="mt-4 flex items-center gap-3 px-2">
-                                <button onClick={toggleMute} className="p-1 text-gray-400 hover:text-white"><Icon name={isMuted || volume === 0 ? 'VolumeOff' : 'VolumeUp'} className="w-5 h-5" /></button>
-                                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={handleVolumeChange} className="volume-slider" />
-                             </div>
                         </div>
+                        <span className="text-xs text-gray-500">{formatTime(duration)}</span>
+                    </div>
+                     <div className="mt-4 flex items-center justify-center gap-6">
+                        <button onClick={() => toTrack('prev')} disabled={mode !== 'playlist'} className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-30"><Icon name="SkipBack" className="w-6 h-6"/></button>
+                        <button onClick={togglePlayPause} className="w-14 h-14 bg-brand-red rounded-full flex items-center justify-center text-white shadow-lg transform transition-transform hover:scale-110">
+                            <Icon name={isPlaying && isRadioActive ? "Pause" : "Play"} className="w-7 h-7" />
+                        </button>
+                        <button onClick={() => toTrack('next')} disabled={mode !== 'playlist'} className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-30"><Icon name="SkipForward" className="w-6 h-6"/></button>
+                     </div>
+                     <div className="mt-4 flex items-center gap-3 px-2">
+                        <button onClick={toggleMute} className="p-1 text-gray-400 hover:text-white"><Icon name={isMuted || volume === 0 ? 'VolumeOff' : 'VolumeUp'} className="w-5 h-5" /></button>
+                        <input type="range" min="0" max="1" step="0.01" value={volume} onChange={handleVolumeChange} className="volume-slider" />
+                     </div>
+                </div>
 
-                        <div className="flex-shrink-0 flex items-center p-2 border-t border-gray-700 bg-black/20">
-                            <button onClick={() => switchMode('playlist')} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'playlist' ? 'text-white bg-brand-red/30' : 'text-gray-400 hover:text-white'}`}>Rádio</button>
-                            <button onClick={() => switchMode('youtube')} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'youtube' ? 'text-white bg-brand-red/30' : 'text-gray-400 hover:text-white'}`}>YouTube</button>
+                <div className="flex-shrink-0 flex items-center p-2 border-y border-gray-700 bg-black/20">
+                    <button onClick={() => switchMode('playlist')} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'playlist' ? 'text-white bg-brand-red/30' : 'text-gray-400 hover:text-white'}`}>Rádio</button>
+                    <button onClick={() => switchMode('youtube')} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'youtube' ? 'text-white bg-brand-red/30' : 'text-gray-400 hover:text-white'}`}>YouTube</button>
+                </div>
+
+                <div className="flex-grow min-h-0 flex flex-col">
+                {mode === 'playlist' ? (
+                    <>
+                        <div className="p-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-gray-300">Playlist Colaborativa</h3>
+                            <button onClick={() => setIsUploadModalOpen(true)} className="p-1.5 rounded-md bg-gray-700/50 hover:bg-brand-red text-gray-300 hover:text-white" title="Adicionar Música MP3"><Icon name="Upload" className="w-4 h-4" /></button>
                         </div>
-
-                        {!isRadioActive && mode === 'playlist' ? (
-                            <div className="p-4 text-center">
-                                <button onClick={onToggleRadioActive} className="w-full bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105">
+                        {!isRadioActive ? (
+                            <div className="p-4 text-center m-3">
+                                <button onClick={() => setIsRadioActive(true)} className="w-full bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105">
                                     [ Conectar à Rádio ]
                                 </button>
                             </div>
-                        ) : mode === 'playlist' ? (
-                            <div className="flex-grow overflow-y-auto space-y-1 p-3 pr-2">
+                        ) : (
+                            <div className="flex-grow overflow-y-auto space-y-1 p-3 pt-0 pr-2">
                                 {error ? <div className="p-3 text-center text-xs text-red-300 bg-red-900/30 rounded-lg"><strong>Falha:</strong> {error}</div>
                                 : playlist.length > 0 ? (
                                     playlist.map((song) => (
@@ -391,30 +395,30 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({ user, playlist, error, onTrac
                                     ))
                                 ) : <p className="text-center text-sm text-gray-500 py-4">A playlist está vazia.</p>}
                             </div>
-                        ) : ( // YouTube Mode
-                            <div className="flex flex-col flex-grow min-h-0 px-3 pb-3">
-                                <form onSubmit={handleSearch} className="relative py-3">
-                                    <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar música ou artista..." className="w-full bg-gray-800 border border-gray-700 rounded-full py-2 pl-4 pr-10 text-sm"/>
-                                    <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-brand-red"><Icon name="Search" className="w-4 h-4"/></button>
-                                </form>
-                                <div className="flex-grow overflow-y-auto space-y-2 pr-1">
-                                    {isSearching && <p className="text-center text-sm text-gray-400">Buscando...</p>}
-                                    {searchError && <p className="text-center text-sm text-red-400">{searchError}</p>}
-                                    {searchResults.map(track => (
-                                        <div key={track.id} onClick={() => playYoutubeTrack(track)} className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-800 cursor-pointer">
-                                            <img src={track.thumbnailUrl} alt={track.title} className="w-10 h-10 rounded-md object-cover flex-shrink-0"/>
-                                            <div className="min-w-0">
-                                                <p className="text-sm text-white truncate font-semibold">{track.title}</p>
-                                                <p className="text-xs text-gray-400 truncate">{track.artist}</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
                         )}
+                    </>
+                ) : ( // YouTube Mode
+                    <div className="flex flex-col flex-grow min-h-0 px-3 pb-3">
+                        <div className="flex-grow overflow-y-auto space-y-2 pr-1 pt-2">
+                            {isSearching && <p className="text-center text-sm text-gray-400">Buscando...</p>}
+                            {searchError && <p className="text-center text-sm text-red-400">{searchError}</p>}
+                            {searchResults.map(track => (
+                                <div key={track.id} onClick={() => playYoutubeTrack(track)} className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-800 cursor-pointer">
+                                    <img src={track.thumbnailUrl} alt={track.title} className="w-10 h-10 rounded-md object-cover flex-shrink-0"/>
+                                    <div className="min-w-0">
+                                        <p className="text-sm text-white truncate font-semibold">{track.title}</p>
+                                        <p className="text-xs text-gray-400 truncate">{track.artist}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <form onSubmit={handleSearch} className="relative mt-auto pt-3">
+                            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar no YouTube..." className="w-full bg-gray-800 border border-gray-700 rounded-full py-2 pl-4 pr-10 text-sm"/>
+                            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-brand-red"><Icon name="Search" className="w-4 h-4"/></button>
+                        </form>
                     </div>
-                 </div>
                 )}
+                </div>
             </div>
         </>
     );

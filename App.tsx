@@ -63,7 +63,7 @@ const App: React.FC = () => {
     const [playlist, setPlaylist] = useState<Song[]>([]);
     const [playlistError, setPlaylistError] = useState<string | null>(null);
     const [currentTrackInfo, setCurrentTrackInfo] = useState<{ title: string; artist: string } | null>(null);
-    const [isRadioActive, setIsRadioActive] = useState(false);
+    const [isMusicPlayerOpen, setIsMusicPlayerOpen] = useState(false);
     
     const isInitialProgressLoad = useRef(true); // To prevent writing progress back on initial load
 
@@ -254,7 +254,7 @@ const App: React.FC = () => {
         setSelectedProject(null);
         setGeneratingProjectConfig(null);
         setLearningCategories(initialCategories);
-        setIsRadioActive(false); // Deactivate radio on logout
+        setIsMusicPlayerOpen(false); // Close music player on logout
     };
     
     const handleToggleAdminPanel = () => setIsAdminPanelOpen(prev => !prev);
@@ -472,6 +472,7 @@ const App: React.FC = () => {
                 installPrompt={installPrompt}
                 nextVideoInfo={nextVideoInfo}
                 currentTrackInfo={currentTrackInfo}
+                onToggleMusicPlayer={() => setIsMusicPlayerOpen(prev => !prev)}
             />
         );
     };
@@ -496,8 +497,8 @@ const App: React.FC = () => {
                     playlist={playlist} 
                     error={playlistError} 
                     onTrackChange={handleTrackChange}
-                    isRadioActive={isRadioActive}
-                    onToggleRadioActive={() => setIsRadioActive(prev => !prev)}
+                    isOpen={isMusicPlayerOpen}
+                    onClose={() => setIsMusicPlayerOpen(false)}
                 />
             )}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (

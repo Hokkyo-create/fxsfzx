@@ -21,6 +21,7 @@ interface DashboardPageProps {
     installPrompt: Event | null;
     nextVideoInfo: NextVideoInfo | null;
     currentTrackInfo: { title: string; artist: string } | null;
+    onToggleMusicPlayer: () => void;
 }
 
 const Widget: React.FC<{ title: string; children: React.ReactNode, className?: string, style?: React.CSSProperties }> = ({ title, children, className = '', style }) => (
@@ -54,6 +55,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     installPrompt,
     nextVideoInfo,
     currentTrackInfo,
+    onToggleMusicPlayer,
 }) => {
     const [showIosInstallMessage, setShowIosInstallMessage] = useState(false);
 
@@ -100,6 +102,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                                 <Icon name="Download" className="w-5 h-5" />
                             </button>
                          )}
+                         <button
+                            onClick={onToggleMusicPlayer}
+                            className={`p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors ${currentTrackInfo ? 'animate-player-pulse' : ''}`}
+                            title="Rádio ARC7HIVE"
+                        >
+                            <Icon name="MusicNote" className="w-5 h-5" />
+                        </button>
                          <button
                             onClick={onNavigateToProjects}
                             className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
