@@ -263,37 +263,31 @@ export const seedInitialVideos = async (categories: LearningCategory[]): Promise
     }
 
     try {
-        // To work around schemas that may be missing a PRIMARY KEY on the `id` column,
-        // we first fetch all existing video IDs to avoid the `ON CONFLICT` error.
-        const { data: existingVideos, error: selectError } = await supabase
+        // Step 1: Delete all existing videos to ensure a clean slate.
+        // This is a destructive operation that resets the content to match `data.ts`.
+        const { error: deleteError } = await supabase
             .from('learning_videos')
-            .select('id');
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000'); // A safe way to delete all rows
 
-        if (selectError) {
-            // Rethrow and let the higher-level try-catch handle formatting
-            throw selectError;
+        if (deleteError) {
+            throw deleteError;
         }
+        console.log("Successfully cleared existing learning videos.");
 
-        const existingIds = new Set(existingVideos.map(v => v.id));
-        const newVideosToInsert = allVideosToInsert.filter(video => !existingIds.has(video.id));
-
-        if (newVideosToInsert.length === 0) {
-            console.log("All initial videos are already present in the database.");
-            return;
-        }
-
-        // Then, we insert only the videos that are not already in the database.
-        const { error: insertError } = await supabase.from('learning_videos').insert(newVideosToInsert);
+        // Step 2: Insert the new, curated list of videos.
+        const { error: insertError } = await supabase
+            .from('learning_videos')
+            .insert(allVideosToInsert);
 
         if (insertError) {
             throw insertError;
         }
-
-        console.log(`Successfully seeded ${newVideosToInsert.length} new initial videos.`);
+        console.log(`Successfully seeded ${allVideosToInsert.length} curated initial videos.`);
 
     } catch (error: any) {
         const formattedError = formatSupabaseError(error, 'conteúdo inicial das trilhas');
-        throw new Error(formattedError || "Falha ao carregar o conteúdo inicial das trilhas de conhecimento.");
+        throw new Error(formattedError || "Falha ao sincronizar o conteúdo inicial das trilhas de conhecimento.");
     }
 };
 
