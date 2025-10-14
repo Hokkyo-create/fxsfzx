@@ -482,7 +482,7 @@ const App: React.FC = () => {
                 />
             )}
             {showChatbot && <Chatbot />}
-            {showMusicPlayer && <MusicPlayer playlist={playlist} error={playlistError} />}
+            {showMusicPlayer && <MusicPlayer user={currentUser} playlist={playlist} error={playlistError} />}
             {currentUser?.name === 'Gustavo' && isAdminPanelOpen && (
                 <AdminPanel onClose={handleToggleAdminPanel} />
             )}

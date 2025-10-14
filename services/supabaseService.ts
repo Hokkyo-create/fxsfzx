@@ -1,6 +1,6 @@
 import { supabase } from '../supabaseClient';
-import type { MeetingMessage, OnlineUser, Project, Song, User, Video, LearningCategory } from '../types';
-import type { RealtimeChannel, PostgrestError } from '@supabase/supabase-js';
+import type { MeetingMessage, OnlineUser, Project, Song, User, Video, LearningCategory, RadioState } from '../types';
+import type { RealtimeChannel, PostgrestError, StorageError } from '@supabase/supabase-js';
 
 // --- Centralized Error Formatting ---
 export const formatSupabaseError = (error: PostgrestError | Error | null, context: string): string | null => {
@@ -133,6 +133,31 @@ export const setupVideosListener = (callback: (videos: Record<string, Video[]>, 
         .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_videos' }, handleVideoUpdates)
         .subscribe();
         
+    return () => { supabase.removeChannel(channel); };
+};
+
+// Radio State
+export const setupRadioStateListener = (callback: (state: RadioState | null, error: PostgrestError | null) => void) => {
+    const handleStateUpdate = async () => {
+        const { data, error } = await supabase
+            .from('radio_state')
+            .select('*')
+            .eq('id', 1)
+            .single();
+
+        if (error && error.code !== 'PGRST116') { // Ignore "not found" which is ok on first run
+            callback(null, error);
+        } else {
+            callback(data as RadioState | null, null);
+        }
+    };
+
+    handleStateUpdate();
+
+    const channel = supabase.channel('public:radio_state')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'radio_state', filter: 'id=eq.1' }, handleStateUpdate)
+        .subscribe();
+
     return () => { supabase.removeChannel(channel); };
 };
 
@@ -344,14 +369,24 @@ export const uploadSong = async (file: File, title: string, artist: string): Pro
     if (!file.type.startsWith('audio/')) throw new Error("File is not an audio type.");
 
     const storagePath = `public/${Date.now()}_${file.name}`;
-    const { error: uploadError } = await supabase.storage.from('music').upload(storagePath, file);
-    if (uploadError) throw uploadError;
+    
+    try {
+        const { error: uploadError } = await supabase.storage.from('music').upload(storagePath, file);
+        if (uploadError) throw uploadError;
 
-    const { data } = supabase.storage.from('music').getPublicUrl(storagePath);
-    const downloadURL = data.publicUrl;
+        const { data } = supabase.storage.from('music').getPublicUrl(storagePath);
+        const downloadURL = data.publicUrl;
 
-    const { error: dbError } = await supabase.from('songs').insert({ title, artist, url: downloadURL, storagePath: storagePath });
-    if (dbError) throw dbError;
+        const { error: dbError } = await supabase.from('songs').insert({ title, artist, url: downloadURL, storagePath: storagePath });
+        if (dbError) throw dbError;
+    } catch (error) {
+        const err = error as StorageError;
+        console.error("Supabase Storage Error:", err);
+        if (err.message?.includes("Bucket not found")) {
+            throw new Error(`Erro de Configuração: O "bucket" de armazenamento 'music' não foi encontrado. \n\nCOMO RESOLVER:\n1. Vá para seu painel do Supabase.\n2. Clique em 'Storage' no menu lateral.\n3. Clique em 'New bucket'.\n4. Dê o nome 'music' (exatamente) e ative a opção 'Public bucket'.\n5. Vá para 'Bucket settings' -> 'Policies' e adicione uma nova política para permitir uploads públicos (INSERT).`);
+        }
+        throw err;
+    }
 };
 
 export const deleteSong = async (song: Song): Promise<void> => {
@@ -362,4 +397,15 @@ export const deleteSong = async (song: Song): Promise<void> => {
 
     const { error: dbError } = await supabase.from('songs').delete().eq('id', song.id);
     if (dbError) throw dbError;
+};
+
+// Radio Actions
+export const updateRadioState = async (state: Partial<RadioState>) => {
+    const { error } = await supabase
+        .from('radio_state')
+        .upsert({ ...state, id: 1 }, { onConflict: 'id' });
+    if (error) {
+        console.error('Error updating radio state:', error);
+        throw error;
+    }
 };

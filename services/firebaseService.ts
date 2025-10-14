@@ -19,7 +19,9 @@ export const setupMessagesListener = (callback: (messages: MeetingMessage[]) => 
         const messagesArray = data ? Object.entries(data).map(([id, msg]) => ({
             id,
             ...(msg as Omit<MeetingMessage, 'id'>)
-        })).sort((a, b) => a.timestamp - b.timestamp) : [];
+        }))
+        // FIX: Convert timestamp to number for sorting to handle potential string/number types from different sources.
+        .sort((a, b) => Number(a.timestamp) - Number(b.timestamp)) : [];
         callback(messagesArray);
     });
     return unsubscribe;

@@ -1,7 +1,7 @@
 import type { IconName as OriginalIconName } from './components/Icons';
 
 // Add new icons to the type
-export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search' | 'Film' | 'Sparkles' | 'Info';
+export type IconName = OriginalIconName | 'Dumbbell' | 'Wrench' | 'Cart' | 'Dollar' | 'Brain' | 'X' | 'Send' | 'Gear' | 'UsersGroup' | 'Upload' | 'BookOpen' | 'Download' | 'Pencil' | 'Pause' | 'SkipBack' | 'SkipForward' | 'Trash' | 'Search' | 'Film' | 'Sparkles' | 'Info' | 'VolumeUp' | 'VolumeOff';
 
 export interface User {
   name: string;
@@ -92,7 +92,7 @@ export interface MeetingMessage {
     id:string;
     user: string;
     text: string;
-    timestamp: number;
+    timestamp: string;
     avatarUrl: string; // Added for profile pictures
 }
 
@@ -114,4 +114,13 @@ export interface YouTubeTrack {
 export interface Notification {
     type: 'error' | 'info';
     message: string;
+}
+
+export interface RadioState {
+  id?: number; // Should always be 1
+  current_track_id: string | null;
+  is_playing: boolean;
+  seek_timestamp: number; // timestamp of last state change
+  track_progress_on_seek: number; // track's currentTime at the time of the state change
+  updated_by: string; // user who made the change
 }
