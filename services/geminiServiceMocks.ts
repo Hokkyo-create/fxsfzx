@@ -1,7 +1,8 @@
 
+
 // Fix: Provide the full implementation for the Gemini mock service.
 import { Type } from "@google/genai";
-import type { QuizQuestion, VideoScript } from "../types";
+import type { QuizQuestion, VideoScript, ShortFormVideoScript } from "../types";
 
 export const getMockMeetingChatResponse = (): string => {
     return "Claro! O ponto principal da última reunião foi a decisão de focar no marketing de conteúdo para o próximo trimestre. Alguma outra pergunta?";
@@ -107,6 +108,19 @@ export const getMockVideoScript = (): VideoScript => {
     };
 };
 
+export const getMockShortFormVideoScript = (): ShortFormVideoScript => {
+    return {
+        hook: "Transforme seu eBook em um sucesso viral!",
+        scenes: [
+            { narration: "Extraia as melhores ideias do seu texto.", imagePrompt: "a glowing lightbulb representing an idea, digital art, zoom in effect" },
+            { narration: "Gere narrações e visuais incríveis com IA.", imagePrompt: "a robot arm painting on a digital canvas, cinematic, fast motion" },
+            { narration: "E compartilhe com o mundo em segundos.", imagePrompt: "social media icons flying out of a smartphone screen, dynamic motion, colorful" },
+        ],
+        cta: "Saiba mais no link da bio!",
+        musicSuggestion: "upbeat electronic"
+    }
+};
+
 export const quizSchema = {
   type: Type.ARRAY,
   items: {
@@ -137,4 +151,25 @@ export const videoScriptSchema = {
         fullNarrationScript: { type: Type.STRING }
     },
     required: ["scenes", "fullNarrationScript"]
+};
+
+export const shortFormVideoScriptSchema = {
+    type: Type.OBJECT,
+    properties: {
+        hook: { type: Type.STRING },
+        scenes: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    narration: { type: Type.STRING, description: "Narration text for the scene (short and punchy)." },
+                    imagePrompt: { type: Type.STRING, description: "A descriptive prompt in English for an AI image generator like Imagen to create a dynamic image for this scene." }
+                },
+                required: ["narration", "imagePrompt"]
+            }
+        },
+        cta: { type: Type.STRING, description: "A short call to action for the end of the video." },
+        musicSuggestion: { type: Type.STRING, description: "Keywords for background music style (e.g., 'upbeat electronic', 'lo-fi hip hop')." }
+    },
+    required: ["hook", "scenes", "cta", "musicSuggestion"]
 };

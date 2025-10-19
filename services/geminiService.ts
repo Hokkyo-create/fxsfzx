@@ -1,6 +1,7 @@
 
-import { GoogleGenAI, Type, GenerateContentResponse, GenerateImagesResponse } from "@google/genai";
-import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video } from "../types";
+
+import { GoogleGenAI, Type, GenerateContentResponse, GenerateImagesResponse, Modality } from "@google/genai";
+import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript } from "../types";
 // Fix: Use a namespace import to correctly reference the exported functions from the mock service.
 import * as mockService from './geminiServiceMocks';
 
@@ -28,6 +29,7 @@ try {
     console.error("Failed to initialize GoogleGenAI:", error);
 }
 
+
 async function handleApiCall<T>(apiCall: () => Promise<T>, functionName: string): Promise<T> {
     if (isGeminiQuotaExceeded) {
         throw new QuotaExceededError("A cota da API do Gemini já foi excedida nesta sessão.");
@@ -42,9 +44,13 @@ async function handleApiCall<T>(apiCall: () => Promise<T>, functionName: string)
         const errorMessage = error.message || (error.error && typeof error.error.message === 'string' ? error.error.message : '');
         const errorStatus = error.status || (error.error && error.error.status);
 
-        if (errorMessage.toLowerCase().includes('quota') || errorMessage.toLowerCase().includes('billing') || errorStatus === 'RESOURCE_EXHAUSTED') {
-            console.warn("Cota da API do Gemini excedida. Ativando modo de simulação para IA.");
+        if (errorMessage.toLowerCase().includes('quota') || errorMessage.toLowerCase().includes('billing') || errorStatus === 'RESOURCE_EXHAUSTED' || errorMessage.includes("Requested entity was not found.")) {
+            console.warn("Cota da API do Gemini excedida ou chave inválida. Ativando modo de simulação para IA.");
             isGeminiQuotaExceeded = true;
+            
+            if (errorMessage.includes("Requested entity was not found.")) {
+                 throw new QuotaExceededError("Sua chave de API selecionada é inválida ou não tem acesso a este modelo. Por favor, selecione uma chave válida.");
+            }
             throw new QuotaExceededError("A cota da API foi excedida. Esta função está temporariamente indisponível.");
         }
         throw new Error(`Erro na comunicação com a IA: ${errorMessage || 'Erro desconhecido.'}`);
@@ -155,7 +161,7 @@ const pipedApiInstances = [
     'https://pipedapi.kavin.rocks',
     'https://pipedapi.smnz.de',
     'https://pipedapi.adminforge.de',
-    'https://pipedapi.in.projectsegfau.lt',
+    'https://pipedapi.in.projectsegau.lt',
     'https://pipedapi.frontend.la',
 ];
 
@@ -554,6 +560,51 @@ export const generateVideoScript = async (project: Project): Promise<VideoScript
         if (error instanceof QuotaExceededError) {
             return mockService.getMockVideoScript();
         }
+        throw error;
+    }
+};
+
+export const generateShortFormVideoScript = async (project: Project): Promise<ShortFormVideoScript> => {
+    try {
+        const response = await handleApiCall<GenerateContentResponse>(() => {
+            const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}`;
+            return ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `Crie um roteiro para um vídeo curto (estilo TikTok/Reels, 15-30 segundos) baseado no conteúdo do ebook: "${project.name}". O vídeo deve ser rápido, cativante e visual. O roteiro deve ter: um 'hook' (frase inicial de impacto), 3-5 'scenes' (cenas) com uma narração curta e um 'imagePrompt' em inglês para cada, um 'cta' (chamada para ação), e uma 'musicSuggestion' (sugestão de estilo musical em inglês). O imagePrompt deve ser descritivo para gerar uma imagem de arte digital. \n\nEBOOK:\n${content.substring(0, 5000)}`,
+                config: { responseMimeType: "application/json", responseSchema: mockService.shortFormVideoScriptSchema }
+            });
+        }, 'generateShortFormVideoScript');
+        return JSON.parse(response.text);
+    } catch (error) {
+        if (error instanceof QuotaExceededError) {
+            return mockService.getMockShortFormVideoScript();
+        }
+        throw error;
+    }
+};
+
+export const generateTtsAudio = async (text: string): Promise<string> => {
+    try {
+        const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text: text }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: 'Kore' }, // A natural-sounding voice
+                    },
+                },
+            },
+        }), 'generateTtsAudio');
+        
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!base64Audio) throw new Error("A resposta da API de áudio não continha dados de áudio.");
+
+        return base64Audio;
+    } catch (error) {
+        // Mock service for TTS is not defined, so just re-throw
+        console.error("TTS generation failed:", error);
         throw error;
     }
 };

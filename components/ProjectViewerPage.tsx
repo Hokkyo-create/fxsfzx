@@ -1,11 +1,15 @@
 
-import React, { useState, useRef, useCallback } from 'react';
+
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Project, Chapter } from '../types';
+import { users } from '../data';
 import Icon from './Icons';
+import Avatar from './Avatar';
 import { downloadProjectAsPdf } from '../utils/pdfGenerator';
 import EditImageModal from './EditImageModal';
 import InteractiveEbookModal from './InteractiveEbookModal';
 import VideoGenerationModal from './VideoGenerationModal';
+import ShortFormVideoGeneratorModal from './ShortFormVideoGeneratorModal';
 import { generateImagePromptForText, generateImage } from '../services/geminiService';
 
 interface ProjectViewerPageProps {
@@ -14,11 +18,119 @@ interface ProjectViewerPageProps {
     onUpdateProject: (projectId: string, updates: Partial<Project>) => void;
 }
 
+
+const SettingsSidebar: React.FC<{ project: Project; onUpdateProject: ProjectViewerPageProps['onUpdateProject'] }> = ({ project, onUpdateProject }) => {
+    const [status, setStatus] = useState(project.status || 'draft');
+    const [price, setPrice] = useState(project.price || 0);
+    const [publicDescription, setPublicDescription] = useState(project.publicDescription || '');
+    const [collaborators, setCollaborators] = useState(project.collaborators || []);
+    const [selectedUser, setSelectedUser] = useState('');
+
+    const availableUsers = users.filter(u => u.name !== project.createdBy && !collaborators.includes(u.name));
+    
+    useEffect(() => {
+        setStatus(project.status || 'draft');
+        setPrice(project.price || 0);
+        setPublicDescription(project.publicDescription || '');
+        setCollaborators(project.collaborators || []);
+    }, [project]);
+
+    const handleAddCollaborator = () => {
+        if (selectedUser && !collaborators.includes(selectedUser)) {
+            setCollaborators([...collaborators, selectedUser]);
+            setSelectedUser('');
+        }
+    };
+    
+    const handleRemoveCollaborator = (name: string) => {
+        setCollaborators(collaborators.filter(c => c !== name));
+    };
+
+    const handleSaveChanges = () => {
+        const updates: Partial<Project> = {
+            status,
+            price: Number(price),
+            publicDescription,
+            collaborators,
+        };
+        onUpdateProject(project.id, updates);
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Alterações salvas com sucesso!' }}));
+    };
+
+    return (
+        <aside className="w-full lg:w-1/3 lg:max-w-sm flex-shrink-0 bg-dark border border-gray-800 rounded-lg flex flex-col p-4 max-h-[calc(100vh-150px)]">
+            <div className="flex-grow overflow-y-auto space-y-6 pr-2">
+                {/* Collaborators Section */}
+                <div>
+                    <h3 className="font-display tracking-wider text-white text-lg mb-3">Colaboradores</h3>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                            <Avatar src={project.avatarUrl} name={project.createdBy} size="sm" />
+                            <span className="font-semibold">{project.createdBy}</span>
+                            <span className="text-xs bg-brand-red/50 text-white px-2 py-0.5 rounded-full">Dono</span>
+                        </div>
+                         {collaborators.map(name => {
+                             const user = users.find(u => u.name === name);
+                             return (
+                                <div key={name} className="flex items-center justify-between gap-2 text-sm group">
+                                    <div className="flex items-center gap-2">
+                                        <Avatar src={user?.avatarUrl || ''} name={name} size="sm" />
+                                        <span>{name}</span>
+                                    </div>
+                                    <button onClick={() => handleRemoveCollaborator(name)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500"><Icon name="X" className="w-4 h-4" /></button>
+                                </div>
+                             )
+                         })}
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                        <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} className="flex-grow bg-gray-900 border border-gray-700 rounded-md text-sm p-1.5 focus:ring-1 focus:ring-brand-red">
+                            <option value="">Adicionar...</option>
+                            {availableUsers.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
+                        </select>
+                        <button onClick={handleAddCollaborator} disabled={!selectedUser} className="bg-gray-700 hover:bg-gray-600 px-3 rounded-md text-sm disabled:opacity-50">Add</button>
+                    </div>
+                </div>
+
+                {/* Publishing Section */}
+                <div className="border-t border-gray-800 pt-4">
+                     <h3 className="font-display tracking-wider text-white text-lg mb-3">Publicação & Venda</h3>
+                     <div className="space-y-4">
+                         <div>
+                            <label className="text-sm font-medium text-gray-300 flex items-center justify-between mb-2">
+                                <span>Status</span>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${status === 'published' ? 'bg-green-500/30 text-green-300' : 'bg-gray-700 text-gray-300'}`}>{status === 'published' ? 'Publicado' : 'Rascunho'}</span>
+                            </label>
+                            <button onClick={() => setStatus(s => s === 'draft' ? 'published' : 'draft')} role="switch" aria-checked={status === 'published'} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${status === 'published' ? 'bg-brand-red' : 'bg-gray-600'}`}>
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${status === 'published' ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                         </div>
+                         <div>
+                             <label htmlFor="price" className="text-sm font-medium text-gray-300 block mb-2">Preço (R$)</label>
+                             <input id="price" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} min="0" className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white" />
+                         </div>
+                         <div>
+                              <label htmlFor="desc" className="text-sm font-medium text-gray-300 block mb-2">Descrição Pública</label>
+                              <textarea id="desc" rows={4} value={publicDescription} onChange={e => setPublicDescription(e.target.value)} placeholder="Descreva seu ebook para a página de vendas..." className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white text-sm"></textarea>
+                         </div>
+                     </div>
+                </div>
+            </div>
+            <div className="flex-shrink-0 p-2 border-t border-gray-800">
+                <button onClick={handleSaveChanges} className="w-full bg-brand-red hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-md transition-colors">
+                    Salvar Alterações
+                </button>
+            </div>
+        </aside>
+    )
+}
+
+
 const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, onUpdateProject }) => {
     const [isEditCoverModalOpen, setIsEditCoverModalOpen] = useState(false);
     const [isEditChapterImageModalOpen, setIsEditChapterImageModalOpen] = useState<number | null>(null);
     const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+    const [isShortFormVideoModalOpen, setIsShortFormVideoModalOpen] = useState(false);
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
     const pdfContentRef = useRef<HTMLDivElement>(null);
@@ -79,60 +191,65 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => setIsVideoModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Gerar Vídeo"><Icon name="Film" className="w-5 h-5"/></button>
+                            <div className="flex items-center gap-1 sm:gap-2">
+                                <button onClick={() => setIsShortFormVideoModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Criar Vídeo Rápido (TikTok/Reels)"><Icon name="Film" className="w-5 h-5"/></button>
                                 <button onClick={() => setIsQuizModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Quiz Interativo"><Icon name="Sparkles" className="w-5 h-5"/></button>
                                 <button onClick={handleDownload} disabled={isDownloadingPdf} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Baixar PDF"><Icon name="Download" className="w-5 h-5"/></button>
                             </div>
                         </div>
                     </div>
                 </header>
+                
+                <div className="container mx-auto flex flex-col lg:flex-row gap-6 p-4 sm:p-6">
+                    <main ref={pdfContentRef} className="flex-grow ebook-content">
+                        {/* Cover Section */}
+                        <div className="relative mb-8 text-center pdf-page-break">
+                            {project.coverImageUrl && (
+                                 <div className="relative group max-w-lg mx-auto aspect-[3/4] rounded-lg overflow-hidden shadow-2xl shadow-black/50">
+                                    <img src={project.coverImageUrl} alt={project.name} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <button onClick={() => setIsEditCoverModalOpen(true)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
+                                            <Icon name="Pencil" className="w-4 h-4" /> Editar Capa
+                                        </button>
+                                    </div>
+                                 </div>
+                            )}
+                            <h1 className="text-4xl md:text-5xl font-display tracking-wider text-white mt-8">{project.name}</h1>
+                            <p className="text-gray-400 mt-2">por {project.createdBy}</p>
+                        </div>
 
-                <main ref={pdfContentRef} className="container mx-auto px-4 sm:px-6 py-8 ebook-content">
-                    {/* Cover Section */}
-                    <div className="relative mb-8 text-center pdf-page-break">
-                        {project.coverImageUrl && (
-                             <div className="relative group max-w-lg mx-auto aspect-[3/4] rounded-lg overflow-hidden shadow-2xl shadow-black/50">
-                                <img src={project.coverImageUrl} alt={project.name} className="w-full h-full object-cover" />
-                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <button onClick={() => setIsEditCoverModalOpen(true)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
-                                        <Icon name="Pencil" className="w-4 h-4" /> Editar Capa
-                                    </button>
-                                </div>
-                             </div>
-                        )}
-                        <h1 className="text-4xl md:text-5xl font-display tracking-wider text-white mt-8">{project.name}</h1>
-                        <p className="text-gray-400 mt-2">por {project.createdBy}</p>
-                    </div>
-
-                    {/* Content */}
-                    <div className="max-w-3xl mx-auto prose-invert prose-p:text-gray-300 prose-headings:text-white prose-headings:font-display">
-                        <section className="pdf-page-break">
-                            <h2>Introdução</h2>
-                            <p>{project.introduction}</p>
-                        </section>
-                        {project.chapters.map((chapter, index) => (
-                            <section key={index} className="pdf-page-break">
-                                <h2>{chapter.title}</h2>
-                                {chapter.imageUrl && (
-                                     <div className="relative group my-4 rounded-lg overflow-hidden">
-                                        <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full h-auto object-cover" />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <button onClick={() => setIsEditChapterImageModalOpen(index)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
-                                                <Icon name="Pencil" className="w-4 h-4" /> Editar Imagem
-                                            </button>
-                                        </div>
-                                     </div>
-                                )}
-                                <p>{chapter.content}</p>
+                        {/* Content */}
+                        <div className="max-w-3xl mx-auto prose-invert prose-p:text-gray-300 prose-headings:text-white prose-headings:font-display">
+                            <section className="pdf-page-break">
+                                <h2>Introdução</h2>
+                                <p>{project.introduction}</p>
                             </section>
-                        ))}
-                        <section>
-                            <h2>Conclusão</h2>
-                            <p>{project.conclusion}</p>
-                        </section>
-                    </div>
-                </main>
+                            {project.chapters.map((chapter, index) => (
+                                <section key={index} className="pdf-page-break">
+                                    <h2>{chapter.title}</h2>
+                                    {chapter.imageUrl && (
+                                         <div className="relative group my-4 rounded-lg overflow-hidden">
+                                            <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full h-auto object-cover" />
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <button onClick={() => setIsEditChapterImageModalOpen(index)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
+                                                    <Icon name="Pencil" className="w-4 h-4" /> Editar Imagem
+                                                </button>
+                                            </div>
+                                         </div>
+                                    )}
+                                    <p>{chapter.content}</p>
+                                </section>
+                            ))}
+                            <section>
+                                <h2>Conclusão</h2>
+                                <p>{project.conclusion}</p>
+                            </section>
+                        </div>
+                    </main>
+
+                    <SettingsSidebar project={project} onUpdateProject={onUpdateProject} />
+                </div>
+
             </div>
             
             {/* Modals */}
@@ -162,6 +279,11 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
             <VideoGenerationModal
                 isOpen={isVideoModalOpen}
                 onClose={() => setIsVideoModalOpen(false)}
+                project={project}
+            />
+            <ShortFormVideoGeneratorModal
+                isOpen={isShortFormVideoModalOpen}
+                onClose={() => setIsShortFormVideoModalOpen(false)}
                 project={project}
             />
         </>

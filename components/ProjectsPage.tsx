@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import type { User, Project, ProjectGenerationConfig } from '../types';
 import Icon from './Icons';
@@ -40,10 +41,13 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onV
         }
     };
     
-    const filteredProjects = useMemo(() => {
-        if (!searchTerm.trim()) return projects;
-        return projects.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [projects, searchTerm]);
+    const { ownedProjects, collaboratingProjects } = useMemo(() => {
+        const filtered = projects.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        return {
+            ownedProjects: filtered.filter(p => p.createdBy === user.name),
+            collaboratingProjects: filtered.filter(p => p.createdBy !== user.name && p.collaborators?.includes(user.name)),
+        };
+    }, [projects, searchTerm, user.name]);
 
     if (generationConfig) {
         return (
@@ -71,7 +75,7 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onV
                                     <Icon name="BookOpen" className="w-8 h-8 text-brand-red" />
                                     <div>
                                         <h1 className="text-xl font-display tracking-wider text-white">Área de Projetos</h1>
-                                        <p className="text-xs text-gray-400">Crie e gerencie seus ebooks com IA</p>
+                                        <p className="text-xs text-gray-400">Crie, colabore e monetize seus ebooks</p>
                                     </div>
                                 </div>
                             </div>
@@ -84,21 +88,21 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onV
                 </header>
 
                 <main className="container mx-auto px-4 sm:px-6 py-8">
-                    <Section title="Seus Projetos">
-                        <div className="relative mb-6">
-                            <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Buscar projetos..."
-                                className="w-full bg-dark/50 border border-gray-800 rounded-lg py-2 pl-10 pr-4 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition"
-                            />
-                            <Icon name="Search" className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                        </div>
+                     <div className="relative mb-8">
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Buscar em todos os projetos..."
+                            className="w-full bg-dark/50 border border-gray-800 rounded-lg py-2 pl-10 pr-4 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition"
+                        />
+                        <Icon name="Search" className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    </div>
 
-                        {filteredProjects.length > 0 ? (
+                    <Section title="Seus Projetos">
+                        {ownedProjects.length > 0 ? (
                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                {filteredProjects.map((project, index) => (
+                                {ownedProjects.map((project, index) => (
                                     <ProjectCard
                                         key={project.id}
                                         project={project}
@@ -108,13 +112,27 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onV
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-16 text-gray-500 bg-dark/30 rounded-lg">
-                                <Icon name="BookOpen" className="w-16 h-16 mx-auto mb-4" />
-                                <h3 className="text-xl font-semibold text-gray-300">Nenhum projeto encontrado.</h3>
-                                <p>Clique em "Novo Projeto" para começar a criar.</p>
+                            <div className="text-center py-10 text-gray-500 bg-dark/30 rounded-lg">
+                                <p>Você ainda não criou nenhum projeto.</p>
                             </div>
                         )}
                     </Section>
+                    
+                    {collaboratingProjects.length > 0 && (
+                        <Section title="Projetos Colaborativos">
+                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                {collaboratingProjects.map((project, index) => (
+                                    <ProjectCard
+                                        key={project.id}
+                                        project={project}
+                                        onClick={() => onViewProject(project)}
+                                        style={{ animationDelay: `${index * 50}ms` }}
+                                    />
+                                ))}
+                            </div>
+                        </Section>
+                    )}
+
                 </main>
             </div>
             <CreateProjectModal
