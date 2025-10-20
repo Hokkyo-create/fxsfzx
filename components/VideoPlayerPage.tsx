@@ -14,6 +14,8 @@ interface VideoPlayerPageProps {
     onAddVideos: (categoryId: string, newVideos: Video[]) => void;
     onBack: () => void;
     initialVideoId: string | null;
+    hasUnsavedChanges: boolean;
+    onSavePlaylists: () => void;
 }
 
 const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
@@ -23,6 +25,8 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     onAddVideos,
     onBack,
     initialVideoId,
+    hasUnsavedChanges,
+    onSavePlaylists,
 }) => {
     const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -42,6 +46,32 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
         }
 
     }, [category, initialVideoId]);
+
+    // Warn user about unsaved changes before leaving the page
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = ''; // Required for modern browsers
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [hasUnsavedChanges]);
+
+    const handleBackNavigation = () => {
+        if (hasUnsavedChanges) {
+            if (window.confirm("Você tem alterações não salvas na playlist. Deseja sair mesmo assim?")) {
+                onBack();
+            }
+        } else {
+            onBack();
+        }
+    };
 
     const handleSelectVideo = (video: Video) => {
         setCurrentVideo(video);
@@ -81,7 +111,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                 <header className="bg-dark border-b border-gray-900 sticky top-0 z-20 flex-shrink-0">
                     <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2">
+                            <button onClick={handleBackNavigation} className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2">
                                 <Icon name="ChevronLeft" className="w-6 h-6" />
                             </button>
                             <Icon name={category.icon} className="w-8 h-8 text-brand-red" />
@@ -144,7 +174,17 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                                 </div>
                              )}
                          </div>
-                         <div className="flex-shrink-0 p-2 border-t border-gray-800">
+                         <div className="flex-shrink-0 p-2 border-t border-gray-800 space-y-2">
+                             {hasUnsavedChanges && (
+                                <button
+                                    onClick={onSavePlaylists}
+                                    className="w-full flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-colors animate-pulse"
+                                    title="Salvar as mudanças feitas na playlist para todos os usuários"
+                                >
+                                    <Icon name="Upload" className="w-5 h-5" />
+                                    Salvar Alterações
+                                </button>
+                            )}
                             <button 
                                 onClick={() => setIsAddVideoModalOpen(true)}
                                 className="w-full flex items-center justify-center gap-2 bg-gray-700/50 hover:bg-gray-700 text-gray-300 font-semibold py-2 px-4 rounded-md transition-colors"
@@ -169,10 +209,6 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                 onClose={() => setIsAddVideoModalOpen(false)}
                 onAddVideos={(videos) => {
                     onAddVideos(category.id, videos);
-                    const message = videos.length > 1 
-                        ? `${videos.length} vídeos adicionados com sucesso!`
-                        : 'Vídeo adicionado com sucesso!';
-                    window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message }}));
                 }}
                 existingVideoIds={new Set(category.videos.map(v => v.id))}
             />

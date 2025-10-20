@@ -42,6 +42,8 @@ const App: React.FC = () => {
     const [playlist, setPlaylist] = useState<Song[]>([]);
     const [nowPlaying, setNowPlaying] = useState<{ title: string; artist: string } | null>(null);
     const [musicError, setMusicError] = useState<string | null>(null);
+    const [hasUnsavedPlaylistChanges, setHasUnsavedPlaylistChanges] = useState(false);
+
 
     // --- UI Modals & Popups State ---
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -169,15 +171,19 @@ const App: React.FC = () => {
                 }
                 return cat;
             });
-
-            const videosByCategory = updatedCategories.reduce((acc, cat) => {
-                acc[cat.id] = cat.videos;
-                return acc;
-            }, {} as Record<string, Video[]>);
-            localStorage.setItem('arc7hive_videos_by_category', JSON.stringify(videosByCategory));
-
             return updatedCategories;
         });
+        setHasUnsavedPlaylistChanges(true);
+    };
+
+    const handleSavePlaylists = () => {
+        const videosByCategory = categories.reduce((acc, cat) => {
+            acc[cat.id] = cat.videos;
+            return acc;
+        }, {} as Record<string, Video[]>);
+        localStorage.setItem('arc7hive_videos_by_category', JSON.stringify(videosByCategory));
+        setHasUnsavedPlaylistChanges(false);
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Playlists salvas com sucesso para todos os usuários!' }}));
     };
     
     const handleUpdateProject = (projectId: string, updates: Partial<Project>) => {
@@ -226,6 +232,8 @@ const App: React.FC = () => {
                             onToggleVideoWatched={handleToggleVideoWatched}
                             onAddVideos={handleAddVideos}
                             onBack={() => setPage('dashboard')} 
+                            hasUnsavedChanges={hasUnsavedPlaylistChanges}
+                            onSavePlaylists={handleSavePlaylists}
                         />;
             case 'projects':
                 return <ProjectsPage 
