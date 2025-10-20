@@ -1,15 +1,9 @@
-
-
 import { GoogleGenAI, Type, GenerateContentResponse, GenerateImagesResponse, Modality } from "@google/genai";
-import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript } from "../types";
+import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript, IconName } from "../types";
 // Fix: Use a namespace import to correctly reference the exported functions from the mock service.
 import * as mockService from './geminiServiceMocks';
 
 let isGeminiQuotaExceeded = false;
-
-// --- Session-level Cache for Video Searches ---
-const videoSearchCache = new Map<string, { videos: Video[], timestamp: number }>();
-const CACHE_EXPIRATION_MS = 5 * 60 * 1000; // 5 minutes
 
 class QuotaExceededError extends Error {
     constructor(message: string) {
@@ -286,79 +280,110 @@ async function searchMusicFromProviders(searchQuery: string): Promise<YouTubeTra
     throw new Error('Todos os provedores de busca de música falharam.');
 }
 
-// --- Main Exported Service Functions ---
+// --- Playlist Fetching Providers ---
 
-async function generateVideoSearchQuery(categoryTitle: string, existingTitles: string[]): Promise<string> {
-    if (existingTitles.length === 0) {
-        return `"${categoryTitle}" tutorial | "${categoryTitle}" curso completo | "${categoryTitle}" aula`;
-    }
+const playlistIdRegex = /(?:list=)([\w-]+)/;
 
-    const titleSamples = existingTitles.slice(0, 5).map(t => `- ${t}`).join('\n');
-    
-    const prompt = `
-    Com base nos seguintes títulos de vídeos existentes na categoria "${categoryTitle}":
-    ${titleSamples}
+interface PlaylistProvider {
+    name: string;
+    playlistUrl: (playlistId: string) => string;
+    parseResponse: (data: any, existingVideoIds: Set<string>) => Video[];
+}
 
-    Gere uma string de busca para o YouTube para encontrar vídeos SIMILARES e de alta qualidade em Português do Brasil.
-    A string de busca deve:
-    1. Usar o operador "|" para separar múltiplos termos de busca.
-    2. Conter entre 5 e 7 termos de busca variados, mas relevantes.
-    3. Focar em encontrar conteúdo educacional e aprofundado (tutoriais, cursos, aulas completas).
-    4. Evitar termos que resultem em vídeos curtos (shorts), vlogs ou conteúdo de baixa qualidade.
-    5. Retorne APENAS a string de busca, sem nenhuma outra formatação ou texto.
+const parseInvidiousPlaylistResponse = (data: any, existingVideoIds: Set<string>): Video[] => {
+    if (!data.videos || !Array.isArray(data.videos)) return [];
+    return data.videos
+        .map((item: any): Partial<Video> => {
+            if (!item.videoId || !item.title) return {};
+            return {
+                id: item.videoId,
+                title: item.title,
+                duration: formatSecondsDuration(item.lengthSeconds),
+                thumbnailUrl: item.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+                platform: 'youtube',
+            };
+        })
+        .filter((video): video is Video => {
+             return !!video.id && !existingVideoIds.has(video.id) && !!video.title && !!video.thumbnailUrl && video.thumbnailUrl.startsWith('http');
+        });
+};
 
-    Exemplo de retorno: "machine learning para iniciantes" | "redes neurais tutorial pt-br" | "curso deep learning completo"
-    `;
+const parsePipedPlaylistResponse = (data: any, existingVideoIds: Set<string>): Video[] => {
+    if (!data.relatedStreams || !Array.isArray(data.relatedStreams)) return [];
+    return data.relatedStreams
+        .map((item: any): Partial<Video> => {
+            if (item.type !== 'stream' || !item.url || !item.title) return {};
+            const videoIdMatch = item.url.match(/v=([^&]+)/);
+            if (!videoIdMatch || !videoIdMatch[1]) return {};
+            
+            const videoId = videoIdMatch[1];
+            return {
+                id: videoId,
+                title: item.title,
+                duration: formatSecondsDuration(item.duration),
+                thumbnailUrl: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                platform: 'youtube',
+            };
+        })
+        .filter((video): video is Video => {
+            return !!video.id && !existingVideoIds.has(video.id) && !!video.title && !!video.thumbnailUrl && video.thumbnailUrl.startsWith('http');
+        });
+};
 
-    try {
-        const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                systemInstruction: "Você é um especialista em SEO para YouTube que cria strings de busca otimizadas para encontrar conteúdo educacional em português do Brasil.",
-                temperature: 0.5,
+const playlistProviders: PlaylistProvider[] = [
+    ...invidiousApiInstances.map(instance => ({
+        name: `Invidious Playlist (${new URL(instance).hostname})`,
+        playlistUrl: (playlistId: string) => `${instance}/api/v1/playlists/${playlistId}`,
+        parseResponse: parseInvidiousPlaylistResponse
+    })),
+    ...pipedApiInstances.map(instance => ({
+        name: `Piped Playlist (${new URL(instance).hostname})`,
+        playlistUrl: (playlistId: string) => `${instance}/playlists/${playlistId}`,
+        parseResponse: parsePipedPlaylistResponse
+    }))
+];
+
+async function getVideosFromPlaylistProviders(playlistId: string, existingVideoIds: Set<string>): Promise<Video[]> {
+    const shuffledProviders = shuffleArray(playlistProviders);
+
+    for (const provider of shuffledProviders) {
+        console.log(`Attempting playlist fetch with: ${provider.name}`);
+        try {
+            const response = await fetchWithTimeout(provider.playlistUrl(playlistId), 10000); // Longer timeout for playlists
+            if (!response.ok) throw new Error(`Response not OK: ${response.status}`);
+            
+            const data = await response.json();
+            const videos = provider.parseResponse(data, existingVideoIds);
+
+            if (videos.length > 0) {
+                console.log(`Found ${videos.length} videos in playlist with ${provider.name}`);
+                return videos;
             }
-        }), 'generateVideoSearchQuery');
-        
-        return response.text.replace(/["`]/g, '').trim();
-    } catch (error) {
-        console.error("Failed to generate video search query with AI, using fallback.", error);
-        return `"${categoryTitle}" tutorial | "${categoryTitle}" curso completo | "${categoryTitle}" aula`;
+        } catch (e) {
+            console.error(`Provider ${provider.name} failed:`, e);
+        }
     }
+    throw new Error('Todos os provedores de busca de playlist falharam.');
 }
 
 
-export const findMoreVideos = async (categoryTitle: string, existingVideos: Video[]): Promise<Video[]> => {
-    const existingVideoIds = new Set(existingVideos.map(v => v.id));
-    const cacheKey = categoryTitle;
+// --- Main Exported Service Functions ---
 
-    const cachedEntry = videoSearchCache.get(cacheKey);
-    if (cachedEntry && (Date.now() - cachedEntry.timestamp < CACHE_EXPIRATION_MS)) {
-        const newVideosFromCache = cachedEntry.videos.filter(v => !existingVideoIds.has(v.id));
-        if (newVideosFromCache.length > 0) {
-            console.log(`Using cached results for: ${cacheKey}`);
-            return newVideosFromCache.sort(() => 0.5 - Math.random()).slice(0, 10);
-        }
-        console.log(`Cache for ${cacheKey} is stale (no new videos). Fetching fresh results.`);
+export const getVideosFromPlaylistUrl = async (url: string, existingVideoIds: Set<string>): Promise<Video[]> => {
+    const match = url.match(playlistIdRegex);
+    if (!match || !match[1]) {
+        throw new Error("URL da playlist do YouTube inválida ou não suportada.");
     }
-
-    const existingTitles = existingVideos.map(v => v.title);
-    const searchQuery = await generateVideoSearchQuery(categoryTitle, existingTitles);
-
-    console.log(`Searching with AI-generated query: "${searchQuery}"`);
+    const playlistId = match[1];
 
     try {
-        const foundVideos = await searchVideosFromProviders(searchQuery, existingVideoIds);
-        
-        videoSearchCache.set(cacheKey, { videos: foundVideos, timestamp: Date.now() });
-        
-        console.log(`Found ${foundVideos.length} total new videos.`);
-        return foundVideos.sort(() => 0.5 - Math.random()).slice(0, 10);
-
+        return await getVideosFromPlaylistProviders(playlistId, existingVideoIds);
     } catch (error) {
-        console.error("An unexpected error occurred during the video provider search:", error);
-        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Serviço de busca de vídeo indisponível no momento.' }}));
-        return [];
+         console.error("An unexpected error occurred during the playlist fetch:", error);
+        if (error instanceof Error) {
+            throw new Error(`Busca de playlist indisponível: ${error.message}`);
+        }
+        throw new Error("Falha ao se comunicar com o serviço de busca de playlists.");
     }
 };
 
@@ -454,10 +479,21 @@ export const generateEbookProjectStream = async function* (topic: string, numCha
         if (isGeminiQuotaExceeded) {
              throw new QuotaExceededError("A cota da API do Gemini já foi excedida nesta sessão.");
         }
+        const availableIcons: IconName[] = ['BookOpen', 'Brain', 'Chart', 'Dollar', 'Fire', 'Heart', 'Sparkles', 'Wrench', 'Film', 'Dumbbell', 'Cart'];
+        const prompt = `Crie um ebook detalhado sobre "${topic}" com ${numChapters} capítulos. A resposta DEVE estar em markdown, seguindo estritamente esta estrutura:
+- Título do Ebook: Comece a primeira linha com "# "
+- Introdução: Comece com a tag "[INTRODUÇÃO]"
+- Capítulos: Use o formato "[CAPÍTULO X: Título do Capítulo][ÍCONE: NomeDoIcone]"
+- Conclusão: Comece com a tag "[CONCLUSÃO]"
+
+Para cada tag "[ÍCONE: NomeDoIcone]", escolha um e apenas um nome de ícone da seguinte lista que melhor represente o conteúdo do capítulo: ${availableIcons.join(', ')}.
+Exemplo de capítulo: "[CAPÍTULO 1: Fundamentos da IA][ÍCONE: Brain]"
+Escreva conteúdo substancial e detalhado para cada seção. Não adicione nenhum texto ou formatação fora desta estrutura.`;
+
         const stream = await ai.models.generateContentStream({
             model: 'gemini-2.5-flash',
-            contents: `Crie um ebook detalhado sobre "${topic}" com ${numChapters} capítulos. Formate a resposta em markdown. Comece com '# ' para o título. Use '[INTRODUÇÃO]' antes da introdução, '[CAPÍTULO X: Título do Capítulo]' para cada capítulo, e '[CONCLUSÃO]' para a conclusão. Escreva conteúdo substancial para cada seção.`,
-            config: { systemInstruction: "Você é um escritor especialista em criar conteúdo educacional estruturado em formato de ebook." }
+            contents: prompt,
+            config: { systemInstruction: "Você é um escritor especialista em criar conteúdo educacional estruturado em formato de ebook, seguindo rigorosamente as instruções de formatação." }
         });
         for await (const chunk of stream) {
             yield chunk.text;

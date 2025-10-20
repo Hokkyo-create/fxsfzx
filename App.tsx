@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import type { User, LearningCategory, NextVideoInfo, Video, Project, MeetingMessage, OnlineUser, Notification, Song } from './types';
 import { categories as initialCategories, users } from './data';
@@ -33,7 +32,7 @@ const App: React.FC = () => {
     const [pageData, setPageData] = useState<any>(null);
 
     // --- Data State ---
-    const [categories, setCategories] = useState<LearningCategory[]>(initialCategories);
+    const [categories, setCategories] = useState<LearningCategory[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
     const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
@@ -65,6 +64,18 @@ const App: React.FC = () => {
         const savedWatched = localStorage.getItem('arc7hive_watchedVideos');
         if (savedWatched) {
             setWatchedVideos(new Set(JSON.parse(savedWatched)));
+        }
+
+        const savedVideosByCategory = localStorage.getItem('arc7hive_videos_by_category');
+        if (savedVideosByCategory) {
+            const parsedVideos = JSON.parse(savedVideosByCategory);
+            const categoriesWithSavedVideos = initialCategories.map(cat => ({
+                ...cat,
+                videos: parsedVideos[cat.id] || cat.videos, // Use saved videos or initial (empty)
+            }));
+            setCategories(categoriesWithSavedVideos);
+        } else {
+            setCategories(initialCategories);
         }
         
         const customStyles = localStorage.getItem('arc7hive_custom_styles');
@@ -149,14 +160,24 @@ const App: React.FC = () => {
     };
     
     const handleAddVideos = (categoryId: string, newVideos: Video[]) => {
-        setCategories(prev => prev.map(cat => {
-            if (cat.id === categoryId) {
-                const existingVideoIds = new Set(cat.videos.map(v => v.id));
-                const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                return { ...cat, videos: [...cat.videos, ...uniqueNewVideos] };
-            }
-            return cat;
-        }));
+        setCategories(prevCategories => {
+            const updatedCategories = prevCategories.map(cat => {
+                if (cat.id === categoryId) {
+                    const existingVideoIds = new Set(cat.videos.map(v => v.id));
+                    const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                    return { ...cat, videos: [...cat.videos, ...uniqueNewVideos] };
+                }
+                return cat;
+            });
+
+            const videosByCategory = updatedCategories.reduce((acc, cat) => {
+                acc[cat.id] = cat.videos;
+                return acc;
+            }, {} as Record<string, Video[]>);
+            localStorage.setItem('arc7hive_videos_by_category', JSON.stringify(videosByCategory));
+
+            return updatedCategories;
+        });
     };
     
     const handleUpdateProject = (projectId: string, updates: Partial<Project>) => {

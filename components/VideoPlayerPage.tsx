@@ -1,11 +1,11 @@
 // components/VideoPlayerPage.tsx
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import YouTube from 'react-youtube';
 import type { LearningCategory, Video } from '../types';
 import Icon from './Icons';
 import VideoCard from './VideoCard';
 import SocialMediaModal from './SocialMediaModal';
-import { findMoreVideos } from '../services/geminiService';
+import AddVideoModal from './AddVideoModal';
 
 interface VideoPlayerPageProps {
     category: LearningCategory;
@@ -15,8 +15,6 @@ interface VideoPlayerPageProps {
     onBack: () => void;
     initialVideoId: string | null;
 }
-
-const MAX_VIDEOS_PER_CATEGORY = 100;
 
 const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     category,
@@ -28,12 +26,8 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
 }) => {
     const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-    const [isLoadingNewVideos, setIsLoadingNewVideos] = useState(false);
+    const [isAddVideoModalOpen, setIsAddVideoModalOpen] = useState(false);
     
-    // Refs for managing scroll and loading state to avoid stale closures in event handlers
-    const playlistRef = useRef<HTMLDivElement>(null);
-    const isLoadingRef = useRef(false);
-
     useEffect(() => {
         // On mount, set the initial video
         if (initialVideoId) {
@@ -53,61 +47,8 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
         setCurrentVideo(video);
     };
     
-    // This function fetches new videos using the AI service.
-    const fetchMoreVideos = useCallback(async () => {
-        if (category.videos.length >= MAX_VIDEOS_PER_CATEGORY) {
-            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Limite de 100 vídeos por categoria atingido.' }}));
-            return;
-        }
-        // Prevent multiple simultaneous fetches
-        if (isLoadingRef.current) return;
-        
-        isLoadingRef.current = true;
-        setIsLoadingNewVideos(true);
-        
-        try {
-            const newVideos = await findMoreVideos(category.title, category.videos || []);
-            
-            if (newVideos.length > 0) {
-                onAddVideos(category.id, newVideos);
-                window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: `${newVideos.length} novos vídeos adicionados!` }}));
-            } else {
-                window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Nenhum vídeo novo encontrado pela IA. Tente novamente.' }}));
-            }
-        } catch (error) {
-            console.error("Failed to find more videos:", error);
-            const errorMessage = error instanceof Error ? error.message : 'Falha ao buscar novos vídeos.';
-            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: errorMessage }}));
-        } finally {
-            isLoadingRef.current = false;
-            setIsLoadingNewVideos(false);
-        }
-    }, [category.title, category.videos, category.id, onAddVideos]);
-    
-    // Effect to handle the infinite scroll logic
-    useEffect(() => {
-        const target = playlistRef.current;
-
-        const handleScroll = () => {
-            if (target) {
-                const isNearBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 200; // 200px threshold
-                if (isNearBottom && !isLoadingRef.current && category.videos.length < MAX_VIDEOS_PER_CATEGORY) {
-                    fetchMoreVideos();
-                }
-            }
-        };
-
-        if (target) {
-            target.addEventListener('scroll', handleScroll);
-            return () => {
-                target.removeEventListener('scroll', handleScroll);
-            };
-        }
-    }, [fetchMoreVideos, category.videos.length]);
-
     const isCurrentVideoWatched = currentVideo ? watchedVideos.has(currentVideo.id) : false;
     const currentVideoUrl = currentVideo ? `https://www.youtube.com/watch?v=${currentVideo.id}` : '';
-    const hasReachedLimit = category.videos.length >= MAX_VIDEOS_PER_CATEGORY;
 
     const PlayerContent = () => {
         if (!currentVideo) {
@@ -117,7 +58,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                     <p className="px-4 text-center">
                         {category.videos.length > 0
                             ? "Selecione um vídeo da lista para começar."
-                            : "Esta trilha ainda não tem vídeos. Clique em 'Carregar Mais' para que a IA encontre conteúdo relevante!"
+                            : "Esta trilha ainda não tem vídeos. Clique em 'Adicionar Vídeo' para começar a montar a playlist!"
                         }
                     </p>
                 </div>
@@ -186,7 +127,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                         <div className="flex-shrink-0 border-b border-gray-800 flex p-3">
                            <h3 className="font-display tracking-wider text-white text-lg">Próximos Vídeos</h3>
                         </div>
-                         <div ref={playlistRef} className="flex-grow overflow-y-auto p-2 space-y-2">
+                         <div className="flex-grow overflow-y-auto p-2 space-y-2">
                              {category.videos.length > 0 ? (
                                 category.videos.map(video => (
                                     <VideoCard 
@@ -202,32 +143,14 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                                     <p>Nenhum vídeo nesta categoria ainda.</p>
                                 </div>
                              )}
-                            {isLoadingNewVideos && (
-                                <div className="flex justify-center items-center p-4">
-                                    <svg className="animate-spin h-6 w-6 text-brand-red" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    <span className="ml-2 text-gray-400">Buscando mais vídeos...</span>
-                                </div>
-                            )}
                          </div>
                          <div className="flex-shrink-0 p-2 border-t border-gray-800">
                             <button 
-                                onClick={fetchMoreVideos} 
-                                disabled={isLoadingNewVideos || hasReachedLimit}
-                                className="w-full flex items-center justify-center gap-2 bg-gray-700/50 hover:bg-gray-700 text-gray-300 font-semibold py-2 px-4 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => setIsAddVideoModalOpen(true)}
+                                className="w-full flex items-center justify-center gap-2 bg-gray-700/50 hover:bg-gray-700 text-gray-300 font-semibold py-2 px-4 rounded-md transition-colors"
                             >
-                                 {isLoadingNewVideos ? (
-                                    <>
-                                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                        Buscando...
-                                    </>
-                                 ) : hasReachedLimit ? (
-                                    'Limite de vídeos atingido'
-                                 ) : (
-                                    <>
-                                        <Icon name="Plus" className="w-5 h-5" />
-                                        Carregar Mais
-                                    </>
-                                 )}
+                                <Icon name="Plus" className="w-5 h-5" />
+                                Adicionar Vídeo
                             </button>
                          </div>
                     </aside>
@@ -241,6 +164,18 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                     videoTitle={currentVideo.title}
                 />
             )}
+            <AddVideoModal
+                isOpen={isAddVideoModalOpen}
+                onClose={() => setIsAddVideoModalOpen(false)}
+                onAddVideos={(videos) => {
+                    onAddVideos(category.id, videos);
+                    const message = videos.length > 1 
+                        ? `${videos.length} vídeos adicionados com sucesso!`
+                        : 'Vídeo adicionado com sucesso!';
+                    window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message }}));
+                }}
+                existingVideoIds={new Set(category.videos.map(v => v.id))}
+            />
         </>
     );
 };

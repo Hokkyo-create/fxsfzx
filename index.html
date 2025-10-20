@@ -118,43 +118,59 @@
           border: none !important;
           box-shadow: none !important;
         }
-        .pdf-export-mode button {
+        .pdf-export-mode button,
+        .pdf-export-mode aside { /* Hide sidebar and all buttons */
           display: none !important;
         }
+        .pdf-export-mode .space-y-8 { /* Control spacing between cards */
+            gap: 20pt !important;
+        }
+        .pdf-export-mode .ebook-card {
+            page-break-inside: avoid;
+            border: none !important;
+            background: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin-bottom: 20pt !important; /* Spacing between cards */
+        }
+        .pdf-export-mode .ebook-cover-card {
+           page-break-after: always;
+           text-align: center;
+        }
         .pdf-export-mode .aspect-\[3\/4\] {
-          page-break-after: always;
-          height: 750pt !important;
-          max-height: 750pt !important;
-          aspect-ratio: auto !important;
+          width: 400pt !important;
+          max-height: 600pt !important;
+          margin: 0 auto 24pt auto !important;
         }
         .pdf-export-mode img {
           max-width: 100% !important;
           height: auto !important;
           object-fit: contain !important;
-        }
-        .pdf-export-mode .p-8.md\:p-12, .pdf-export-mode .p-4 {
-          padding: 0 !important;
+          border-radius: 0 !important;
         }
         .pdf-export-mode h1 {
-          page-break-before: always;
-          padding-top: 40pt;
           font-size: 28pt !important;
-          margin-bottom: 24pt !important;
-        }
-        .pdf-export-mode h3 {
-          page-break-before: always;
-          padding-top: 40pt;
-          font-size: 18pt !important;
           margin-top: 0 !important;
-          margin-bottom: 16pt !important;
+          margin-bottom: 12pt !important;
         }
-        .pdf-export-mode h1 + h3 {
-          page-break-before: auto;
-          padding-top: 0;
+        .pdf-export-mode h2 {
+          font-size: 18pt !important;
+          margin-bottom: 16pt !important;
         }
         .pdf-export-mode p {
           font-size: 10pt;
           margin-bottom: 12pt;
+          white-space: pre-wrap !important;
+        }
+        /* Force single column for chapters with images */
+        .pdf-export-mode .md\:grid {
+            display: block !important;
+        }
+        /* Style card header for PDF */
+        .pdf-export-mode .ebook-card > .flex.items-center { /* Select the header div */
+            border-bottom: 1px solid #444;
+            padding-bottom: 10pt;
+            margin-bottom: 16pt;
         }
         
         .animate-zoom-in { animation: zoomIn 0.4s ease-out forwards; }
@@ -242,8 +258,8 @@
                   '100%': { opacity: 1, transform: 'translateX(0)' },
               },
               playerPanelOut: {
-                  '0%': { opacity: 1, transform: 'translateX(0)' },
-                  '100%': { opacity: 0, transform: 'translateX(-100%)' },
+                  '0%': { opacity: 0, transform: 'translateX(-100%)' },
+                  '100%': { opacity: 0, transform: 'translateX(100%)' },
               },
               playerPanelMobileIn: {
                   '0%': { opacity: 0, transform: 'translateY(100%)' },

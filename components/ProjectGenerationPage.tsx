@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { ProjectGenerationConfig, Project, Chapter, User } from '../types';
+import type { ProjectGenerationConfig, Project, Chapter, User, IconName } from '../types';
 import { generateEbookProjectStream, generateImagePromptForText, generateImage } from '../services/geminiService';
 import Icon from './Icons';
 
@@ -40,12 +40,13 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ user, con
                 const conclusion = conclusionMatch ? conclusionMatch[1].trim() : '';
 
                 const chapters: Chapter[] = [];
-                const chapterRegex = /\[CAPÍTULO (\d+):\s*([^\]]+)\]([\s\S]*?)(?=\[CAPÍTULO|\[CONCLUSÃO\]|$)/g;
+                const chapterRegex = /\[CAPÍTULO (\d+):\s*([^\]]+)\]\[ÍCONE:\s*([^\]]+)\]([\s\S]*?)(?=\[CAPÍTULO|\[CONCLUSÃO\]|$)/g;
                 let match;
                 while ((match = chapterRegex.exec(fullText)) !== null) {
                     chapters.push({
                         title: `Capítulo ${match[1]}: ${match[2].trim()}`,
-                        content: match[3].trim(),
+                        icon: match[3].trim() as IconName,
+                        content: match[4].trim(),
                     });
                 }
 

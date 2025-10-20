@@ -1,7 +1,8 @@
 
 
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { Project, Chapter } from '../types';
+import type { Project, Chapter, IconName } from '../types';
 import { users } from '../data';
 import Icon from './Icons';
 import Avatar from './Avatar';
@@ -124,6 +125,41 @@ const SettingsSidebar: React.FC<{ project: Project; onUpdateProject: ProjectView
     )
 }
 
+const EbookCard: React.FC<{
+    title: string;
+    icon?: IconName;
+    imageUrl?: string;
+    onEditImage?: () => void;
+    children: React.ReactNode;
+    className?: string;
+}> = ({ title, icon, imageUrl, onEditImage, children, className = '' }) => {
+    return (
+        <section className={`ebook-card bg-dark/50 border border-gray-800 rounded-lg p-8 md:p-12 shadow-lg ${className}`}>
+            <div className="flex items-center gap-4 mb-6">
+                {icon && <div className="w-12 h-12 flex-shrink-0 bg-brand-red/10 rounded-lg flex items-center justify-center border border-brand-red/20"><Icon name={icon} className="w-7 h-7 text-brand-red" /></div>}
+                <h2 className="text-2xl md:text-3xl font-display tracking-wider text-white">{title}</h2>
+            </div>
+            <div className={imageUrl ? "md:grid md:grid-cols-2 gap-8 items-start" : ""}>
+                {imageUrl && (
+                    <div className="relative group mb-6 md:mb-0 rounded-lg overflow-hidden">
+                        <img src={imageUrl} alt={`Imagem para ${title}`} className="w-full h-auto object-cover" />
+                        {onEditImage && (
+                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <button onClick={onEditImage} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
+                                    <Icon name="Pencil" className="w-4 h-4" /> Editar Imagem
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+                <div className="prose-invert prose-p:text-gray-300 prose-p:leading-relaxed whitespace-pre-wrap">
+                    {children}
+                </div>
+            </div>
+        </section>
+    );
+};
+
 
 const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, onUpdateProject }) => {
     const [isEditCoverModalOpen, setIsEditCoverModalOpen] = useState(false);
@@ -201,50 +237,47 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                 </header>
                 
                 <div className="container mx-auto flex flex-col lg:flex-row gap-6 p-4 sm:p-6">
-                    <main ref={pdfContentRef} className="flex-grow ebook-content">
-                        {/* Cover Section */}
-                        <div className="relative mb-8 text-center pdf-page-break">
-                            {project.coverImageUrl && (
-                                 <div className="relative group max-w-lg mx-auto aspect-[3/4] rounded-lg overflow-hidden shadow-2xl shadow-black/50">
-                                    <img src={project.coverImageUrl} alt={project.name} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <button onClick={() => setIsEditCoverModalOpen(true)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
-                                            <Icon name="Pencil" className="w-4 h-4" /> Editar Capa
-                                        </button>
-                                    </div>
-                                 </div>
-                            )}
-                            <h1 className="text-4xl md:text-5xl font-display tracking-wider text-white mt-8">{project.name}</h1>
-                            <p className="text-gray-400 mt-2">por {project.createdBy}</p>
-                        </div>
+                    <main ref={pdfContentRef} className="flex-grow space-y-8">
+                        {/* Cover Card */}
+                        <section className="ebook-card ebook-cover-card bg-dark/50 border border-gray-800 rounded-lg p-8 md:p-12">
+                             <div className="relative text-center">
+                                {project.coverImageUrl && (
+                                     <div className="relative group max-w-lg mx-auto aspect-[3/4] rounded-lg overflow-hidden shadow-2xl shadow-black/50">
+                                        <img src={project.coverImageUrl} alt={project.name} className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <button onClick={() => setIsEditCoverModalOpen(true)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
+                                                <Icon name="Pencil" className="w-4 h-4" /> Editar Capa
+                                            </button>
+                                        </div>
+                                     </div>
+                                )}
+                                <h1 className="text-4xl md:text-5xl font-display tracking-wider text-white mt-8">{project.name}</h1>
+                                <p className="text-gray-400 mt-2">por {project.createdBy}</p>
+                            </div>
+                        </section>
 
-                        {/* Content */}
-                        <div className="max-w-3xl mx-auto prose-invert prose-p:text-gray-300 prose-headings:text-white prose-headings:font-display">
-                            <section className="pdf-page-break">
-                                <h2>Introdução</h2>
-                                <p>{project.introduction}</p>
-                            </section>
-                            {project.chapters.map((chapter, index) => (
-                                <section key={index} className="pdf-page-break">
-                                    <h2>{chapter.title}</h2>
-                                    {chapter.imageUrl && (
-                                         <div className="relative group my-4 rounded-lg overflow-hidden">
-                                            <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full h-auto object-cover" />
-                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                <button onClick={() => setIsEditChapterImageModalOpen(index)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
-                                                    <Icon name="Pencil" className="w-4 h-4" /> Editar Imagem
-                                                </button>
-                                            </div>
-                                         </div>
-                                    )}
-                                    <p>{chapter.content}</p>
-                                </section>
-                            ))}
-                            <section>
-                                <h2>Conclusão</h2>
-                                <p>{project.conclusion}</p>
-                            </section>
-                        </div>
+                        {/* Introduction Card */}
+                        <EbookCard title="Introdução" icon="BookOpen">
+                            <p>{project.introduction}</p>
+                        </EbookCard>
+
+                        {/* Chapters */}
+                        {project.chapters.map((chapter, index) => (
+                            <EbookCard
+                                key={index}
+                                title={chapter.title}
+                                icon={chapter.icon}
+                                imageUrl={chapter.imageUrl}
+                                onEditImage={() => setIsEditChapterImageModalOpen(index)}
+                            >
+                                <p>{chapter.content}</p>
+                            </EbookCard>
+                        ))}
+                        
+                        {/* Conclusion Card */}
+                        <EbookCard title="Conclusão" icon="Sparkles">
+                             <p>{project.conclusion}</p>
+                        </EbookCard>
                     </main>
 
                     <SettingsSidebar project={project} onUpdateProject={onUpdateProject} />

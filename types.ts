@@ -44,6 +44,7 @@ export interface Chapter {
     title: string;
     content: string;
     imageUrl?: string;
+    icon?: IconName;
 }
 
 export interface Project {
