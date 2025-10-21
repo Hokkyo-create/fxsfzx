@@ -42,7 +42,6 @@ const App: React.FC = () => {
     const [playlist, setPlaylist] = useState<Song[]>([]);
     const [nowPlaying, setNowPlaying] = useState<{ title: string; artist: string } | null>(null);
     const [musicError, setMusicError] = useState<string | null>(null);
-    const [hasUnsavedPlaylistChanges, setHasUnsavedPlaylistChanges] = useState(false);
 
 
     // --- UI Modals & Popups State ---
@@ -164,35 +163,58 @@ const App: React.FC = () => {
         });
     };
     
-    const handleAddVideos = (categoryId: string, newVideos: Video[]) => {
-        setCategories(prevCategories => {
-            const updatedCategories = prevCategories.map(cat => {
-                if (cat.id === categoryId) {
-                    const existingVideoIds = new Set(cat.videos.map(v => v.id));
-                    const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
-                    return { ...cat, videos: [...cat.videos, ...uniqueNewVideos] };
-                }
-                return cat;
-            });
-            return updatedCategories;
-        });
-        setHasUnsavedPlaylistChanges(true);
-    };
-
-    const handleSavePlaylists = async () => {
-        const videosByCategory = categories.reduce((acc, cat) => {
+    const persistCategories = async (updatedCategories: LearningCategory[], successMessage: string, failureMessage: string, revertState: () => void) => {
+        const videosByCategory = updatedCategories.reduce((acc, cat) => {
             acc[cat.id] = cat.videos;
             return acc;
         }, {} as Record<string, Video[]>);
 
         try {
             await supabaseService.saveLearningPlaylists(videosByCategory);
-            setHasUnsavedPlaylistChanges(false);
-            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Playlists salvas com sucesso no banco de dados!' }}));
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: successMessage } }));
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Falha ao salvar playlists.";
-            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message }}));
+            const message = error instanceof Error ? error.message : failureMessage;
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message } }));
+            revertState();
         }
+    };
+    
+    const handleAddVideos = (categoryId: string, newVideos: Video[]) => {
+        const originalCategories = [...categories];
+        let hasChanges = false;
+        
+        const updatedCategories = categories.map(cat => {
+            if (cat.id === categoryId) {
+                const existingVideoIds = new Set(cat.videos.map(v => v.id));
+                const uniqueNewVideos = newVideos.filter(v => !existingVideoIds.has(v.id));
+                if (uniqueNewVideos.length > 0) {
+                    hasChanges = true;
+                    return { ...cat, videos: [...cat.videos, ...uniqueNewVideos] };
+                }
+            }
+            return cat;
+        });
+
+        if (hasChanges) {
+            setCategories(updatedCategories);
+            persistCategories(updatedCategories, 'Playlist atualizada com sucesso!', 'Falha ao salvar a playlist.', () => setCategories(originalCategories));
+        }
+    };
+    
+    const handleRemoveVideo = (categoryId: string, videoId: string) => {
+        if (!window.confirm("Tem certeza que deseja remover este vídeo da trilha?")) return;
+
+        const originalCategories = [...categories];
+        
+        const updatedCategories = categories.map(cat => {
+            if (cat.id === categoryId) {
+                return { ...cat, videos: cat.videos.filter(v => v.id !== videoId) };
+            }
+            return cat;
+        });
+
+        setCategories(updatedCategories);
+        persistCategories(updatedCategories, 'Vídeo removido com sucesso!', 'Falha ao remover o vídeo.', () => setCategories(originalCategories));
     };
     
     const handleUpdateProject = (projectId: string, updates: Partial<Project>) => {
@@ -240,9 +262,8 @@ const App: React.FC = () => {
                             watchedVideos={watchedVideos} 
                             onToggleVideoWatched={handleToggleVideoWatched}
                             onAddVideos={handleAddVideos}
+                            onRemoveVideo={handleRemoveVideo}
                             onBack={() => setPage('dashboard')} 
-                            hasUnsavedChanges={hasUnsavedPlaylistChanges}
-                            onSavePlaylists={handleSavePlaylists}
                             allCategories={categories}
                         />;
             case 'projects':

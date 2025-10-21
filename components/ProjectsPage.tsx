@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useMemo } from 'react';
 import type { User, Project, ProjectGenerationConfig } from '../types';
 import Icon from './Icons';
@@ -7,7 +8,7 @@ import Section from './Section';
 import ProjectCard from './ProjectCard';
 import CreateProjectModal from './CreateProjectModal';
 import ProjectGenerationPage from './ProjectGenerationPage';
-import { createProject } from '../services/supabaseService';
+import { createProject } from '../services/firebaseService';
 
 interface ProjectsPageProps {
     user: User;

@@ -1,4 +1,3 @@
-
 // Fix: Provide the full implementation for the Supabase service.
 import { supabase } from '../supabaseClient';
 import type { PostgrestError } from '@supabase/supabase-js';
@@ -8,7 +7,7 @@ const MUSIC_TABLE = 'music_playlist';
 const PROJECTS_TABLE = 'projects';
 const MEETING_CHAT_TABLE = 'meeting_messages';
 const RADIO_STATE_TABLE = 'radio_state';
-const LEARNING_PLAYLISTS_TABLE = 'learning_playlists';
+const LEARNING_PLAYLISTS_TABLE = 'learning_videos'; // Corrected table name
 const RADIO_STATE_ID = 1; // Assuming a single radio state row
 
 export const formatSupabaseError = (error: PostgrestError | null, context: string): string => {
@@ -41,26 +40,86 @@ export const clearMeetingChat = async () => {
 // --- Learning Playlists ---
 
 export const getLearningPlaylists = async (): Promise<Record<string, Video[]> | null> => {
-    const { data, error } = await supabase
+    // Fetches all learning videos and organizes them by category.
+    const { data: videoRows, error } = await supabase
         .from(LEARNING_PLAYLISTS_TABLE)
-        .select('data')
-        .eq('id', 1) // Using a single row with ID 1 to store the entire JSON object
-        .single();
+        .select('id, title, duration, thumbnail_url, platform, category_id');
+
     if (error) {
-        // Ignore 'multiple (or no) rows returned' error, which happens on first run before data exists.
-        if (error.code !== 'PGRST116') { 
-             console.error(formatSupabaseError(error, 'getLearningPlaylists'));
+        // This error can occur if the table is empty. In that case, we return an empty object, which is valid.
+        if (error.code === 'PGRST116') {
+             return {};
         }
+        console.error(formatSupabaseError(error, 'getLearningPlaylists'));
         return null;
     }
-    return data ? data.data : null;
+
+    if (!videoRows) return {};
+
+    // Group the flat list of videos into a dictionary keyed by category ID.
+    const videosByCategory = videoRows.reduce((acc, row) => {
+        const categoryId = row.category_id;
+        if (!categoryId) return acc;
+
+        const video: Video = {
+            id: row.id,
+            title: row.title,
+            duration: row.duration,
+            thumbnailUrl: row.thumbnail_url,
+            platform: row.platform,
+        };
+
+        if (!acc[categoryId]) {
+            acc[categoryId] = [];
+        }
+        acc[categoryId].push(video);
+        return acc;
+    }, {} as Record<string, Video[]>);
+
+    return videosByCategory;
 };
 
+
 export const saveLearningPlaylists = async (playlists: Record<string, Video[]>) => {
-    const { error } = await supabase
+    // This function synchronizes the database with the provided playlist state.
+    // It uses a "delete and replace" strategy for simplicity, which is effective
+    // but could be optimized for very large playlists in the future.
+
+    // First, flatten the new playlist state into a format suitable for insertion.
+    const rowsToInsert = Object.entries(playlists).flatMap(([categoryId, videos]) =>
+        videos.map(video => ({
+            category_id: categoryId,
+            id: video.id, // YouTube video ID
+            title: video.title,
+            duration: video.duration,
+            thumbnail_url: video.thumbnailUrl,
+            platform: video.platform,
+        }))
+    );
+
+    // To ensure consistency, we first delete all existing videos.
+    // This handles additions, removals, and re-ordering in one go.
+    const { error: deleteError } = await supabase
         .from(LEARNING_PLAYLISTS_TABLE)
-        .upsert({ id: 1, data: playlists });
-    if (error) throw new Error(formatSupabaseError(error, 'saveLearningPlaylists'));
+        .delete()
+        .neq('id', `a-value-that-is-never-present-${Date.now()}`); // .delete() requires a filter.
+
+    if (deleteError) {
+        throw new Error(formatSupabaseError(deleteError, 'saveLearningPlaylists (delete step)'));
+    }
+
+    // If there are any videos to save, insert them all.
+    if (rowsToInsert.length > 0) {
+        const { error: insertError } = await supabase
+            .from(LEARNING_PLAYLISTS_TABLE)
+            .insert(rowsToInsert);
+
+        if (insertError) {
+            // This could leave the database empty if deletion succeeded but insertion failed.
+            // For a production app, a transaction or RPC function would be safer.
+            throw new Error(formatSupabaseError(insertError, 'saveLearningPlaylists (insert step)'));
+        }
+    }
 };
 
 

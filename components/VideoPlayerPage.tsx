@@ -13,10 +13,9 @@ interface VideoPlayerPageProps {
     watchedVideos: Set<string>;
     onToggleVideoWatched: (videoId: string) => void;
     onAddVideos: (categoryId: string, newVideos: Video[]) => void;
+    onRemoveVideo: (categoryId: string, videoId: string) => void;
     onBack: () => void;
     initialVideoId: string | null;
-    hasUnsavedChanges: boolean;
-    onSavePlaylists: () => void;
 }
 
 const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
@@ -25,10 +24,9 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     watchedVideos,
     onToggleVideoWatched,
     onAddVideos,
+    onRemoveVideo,
     onBack,
     initialVideoId,
-    hasUnsavedChanges,
-    onSavePlaylists,
 }) => {
     const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -49,30 +47,8 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
 
     }, [category, initialVideoId]);
 
-    // Warn user about unsaved changes before leaving the page
-    useEffect(() => {
-        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (hasUnsavedChanges) {
-                e.preventDefault();
-                e.returnValue = ''; // Required for modern browsers
-            }
-        };
-
-        window.addEventListener('beforeunload', handleBeforeUnload);
-
-        return () => {
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-        };
-    }, [hasUnsavedChanges]);
-
     const handleBackNavigation = () => {
-        if (hasUnsavedChanges) {
-            if (window.confirm("Você tem alterações não salvas na playlist. Deseja sair mesmo assim?")) {
-                onBack();
-            }
-        } else {
-            onBack();
-        }
+        onBack();
     };
 
     const handleSelectVideo = (video: Video) => {
@@ -168,6 +144,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                                         isPlaying={currentVideo?.id === video.id}
                                         isWatched={watchedVideos.has(video.id)}
                                         onSelect={() => handleSelectVideo(video)}
+                                        onRemove={() => onRemoveVideo(category.id, video.id)}
                                     />
                                 ))
                              ) : (
@@ -177,16 +154,6 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                              )}
                          </div>
                          <div className="flex-shrink-0 p-2 border-t border-gray-800 space-y-2">
-                             {hasUnsavedChanges && (
-                                <button
-                                    onClick={onSavePlaylists}
-                                    className="w-full flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-colors animate-pulse"
-                                    title="Salvar as mudanças feitas na playlist para todos os usuários"
-                                >
-                                    <Icon name="Upload" className="w-5 h-5" />
-                                    Salvar Alterações
-                                </button>
-                            )}
                             <button 
                                 onClick={() => setIsAddVideoModalOpen(true)}
                                 className="w-full flex items-center justify-center gap-2 bg-gray-700/50 hover:bg-gray-700 text-gray-300 font-semibold py-2 px-4 rounded-md transition-colors"
