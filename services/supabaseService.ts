@@ -2,12 +2,13 @@
 // Fix: Provide the full implementation for the Supabase service.
 import { supabase } from '../supabaseClient';
 import type { PostgrestError } from '@supabase/supabase-js';
-import type { Project, Song, RadioState } from '../types';
+import type { Project, Song, RadioState, Video, LearningCategory } from '../types';
 
 const MUSIC_TABLE = 'music_playlist';
 const PROJECTS_TABLE = 'projects';
 const MEETING_CHAT_TABLE = 'meeting_messages';
 const RADIO_STATE_TABLE = 'radio_state';
+const LEARNING_PLAYLISTS_TABLE = 'learning_playlists';
 const RADIO_STATE_ID = 1; // Assuming a single radio state row
 
 export const formatSupabaseError = (error: PostgrestError | null, context: string): string => {
@@ -36,6 +37,32 @@ export const clearMeetingChat = async () => {
         .gt('id', 0); // Deletes all rows
     if (error) throw new Error(formatSupabaseError(error, 'clearMeetingChat'));
 };
+
+// --- Learning Playlists ---
+
+export const getLearningPlaylists = async (): Promise<Record<string, Video[]> | null> => {
+    const { data, error } = await supabase
+        .from(LEARNING_PLAYLISTS_TABLE)
+        .select('data')
+        .eq('id', 1) // Using a single row with ID 1 to store the entire JSON object
+        .single();
+    if (error) {
+        // Ignore 'multiple (or no) rows returned' error, which happens on first run before data exists.
+        if (error.code !== 'PGRST116') { 
+             console.error(formatSupabaseError(error, 'getLearningPlaylists'));
+        }
+        return null;
+    }
+    return data ? data.data : null;
+};
+
+export const saveLearningPlaylists = async (playlists: Record<string, Video[]>) => {
+    const { error } = await supabase
+        .from(LEARNING_PLAYLISTS_TABLE)
+        .upsert({ id: 1, data: playlists });
+    if (error) throw new Error(formatSupabaseError(error, 'saveLearningPlaylists'));
+};
+
 
 // --- Music & Radio Actions ---
 

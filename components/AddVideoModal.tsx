@@ -1,24 +1,28 @@
 // components/AddVideoModal.tsx
-import React, { useState } from 'react';
-import type { Video } from '../types';
+import React, { useState, useMemo } from 'react';
+import type { Video, LearningCategory } from '../types';
 import Icon from './Icons';
-import { searchYouTubeVideos, getVideosFromPlaylistUrl } from '../services/geminiService';
+import { searchYouTubeVideos, getVideosFromPlaylistUrl, searchVideosByAI } from '../services/geminiService';
 
 interface AddVideoModalProps {
     isOpen: boolean;
     onClose: () => void;
     onAddVideos: (videos: Video[]) => void;
     existingVideoIds: Set<string>;
+    allCategories: LearningCategory[];
 }
 
-const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVideos, existingVideoIds }) => {
-    const [mode, setMode] = useState<'search' | 'playlist'>('search');
+const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVideos, existingVideoIds, allCategories }) => {
+    const [mode, setMode] = useState<'search' | 'playlist' | 'ai'>('search');
     const [playlistUrl, setPlaylistUrl] = useState('');
     const [query, setQuery] = useState('');
     const [searchResults, setSearchResults] = useState<Video[]>([]);
     const [playlistResults, setPlaylistResults] = useState<Video[]>([]);
+    const [selectedPlaylistVideos, setSelectedPlaylistVideos] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+
+    const allVideos = useMemo(() => allCategories.flatMap(c => c.videos), [allCategories]);
 
     if (!isOpen) return null;
     
@@ -27,6 +31,7 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
         setPlaylistUrl('');
         setSearchResults([]);
         setPlaylistResults([]);
+        setSelectedPlaylistVideos(new Set());
         setIsLoading(false);
         setError('');
     }
@@ -51,6 +56,26 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
         }
     };
 
+    const handleAiSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!query.trim()) return;
+
+        setIsLoading(true);
+        setError('');
+        setSearchResults([]);
+        try {
+            const foundVideos = await searchVideosByAI(query, allVideos);
+            setSearchResults(foundVideos);
+            if (foundVideos.length === 0) {
+                setError("Nenhum vídeo relevante encontrado em nossas playlists para esta busca.");
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Falha na busca com IA.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleImportPlaylist = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!playlistUrl.trim()) return;
@@ -61,6 +86,7 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
         try {
             const videos = await getVideosFromPlaylistUrl(playlistUrl, existingVideoIds);
             setPlaylistResults(videos);
+            setSelectedPlaylistVideos(new Set(videos.map(v => v.id))); // Pre-select all new videos
             if (videos.length === 0) {
                  setError("Nenhum vídeo novo encontrado nesta playlist. Eles podem já estar na trilha ou a playlist está vazia/privada.");
             }
@@ -75,10 +101,32 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
         onAddVideos([video]);
     };
     
-    const handleAddAllFromPlaylist = () => {
-        if(playlistResults.length > 0) {
-            onAddVideos(playlistResults);
-            setPlaylistResults([]); // Clear results after adding to prevent re-adding
+    const handleAddSelectedFromPlaylist = () => {
+        if(selectedPlaylistVideos.size > 0) {
+            const videosToAdd = playlistResults.filter(v => selectedPlaylistVideos.has(v.id));
+            onAddVideos(videosToAdd);
+            setPlaylistResults([]);
+            setSelectedPlaylistVideos(new Set());
+        }
+    };
+
+    const handleToggleSelectVideo = (videoId: string) => {
+        setSelectedPlaylistVideos(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(videoId)) {
+                newSet.delete(videoId);
+            } else {
+                newSet.add(videoId);
+            }
+            return newSet;
+        });
+    };
+
+    const handleToggleSelectAll = () => {
+        if (selectedPlaylistVideos.size === playlistResults.length) {
+            setSelectedPlaylistVideos(new Set());
+        } else {
+            setSelectedPlaylistVideos(new Set(playlistResults.map(v => v.id)));
         }
     };
 
@@ -94,7 +142,11 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
                 </div>
                 
                  <div className="flex-shrink-0 flex items-center p-1 rounded-lg bg-gray-900 mb-4">
-                    <button onClick={() => { setMode('search'); resetState(); }} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'search' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>Buscar Vídeo</button>
+                    <button onClick={() => { setMode('search'); resetState(); }} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'search' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>Buscar no YouTube</button>
+                    <button onClick={() => { setMode('ai'); resetState(); }} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-2 ${mode === 'ai' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>
+                        <Icon name="Sparkles" className="w-4 h-4"/>
+                        Busca com IA
+                    </button>
                     <button onClick={() => { setMode('playlist'); resetState(); }} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'playlist' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>Importar Playlist</button>
                 </div>
 
@@ -136,7 +188,45 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
                              }) : !isLoading && !error && <p className="text-center text-gray-500 pt-8">Faça uma busca para encontrar vídeos.</p>}
                          </div>
                     </>
-                ) : (
+                ) : mode === 'ai' ? (
+                     <>
+                        <form onSubmit={handleAiSearch} className="relative flex-shrink-0">
+                            <input
+                                type="text"
+                                value={query}
+                                onChange={e => setQuery(e.target.value)}
+                                placeholder="Buscar em todas as playlists com IA..."
+                                className="w-full bg-gray-900 border border-gray-700 rounded-full py-2 pl-4 pr-12 text-white focus:ring-2 focus:ring-brand-red"
+                            />
+                            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-brand-red disabled:text-gray-600" disabled={isLoading}>
+                                {isLoading ? <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : <Icon name="Sparkles" className="w-5 h-5" />}
+                            </button>
+                        </form>
+                         <div className="flex-grow overflow-y-auto mt-4 pr-2 space-y-2">
+                             {error && <p className="text-center text-red-400 p-4">{error}</p>}
+                             {searchResults.length > 0 ? searchResults.map(video => {
+                                 const isAdded = existingVideoIds.has(video.id);
+                                 return (
+                                     <div key={video.id} className="flex items-center gap-4 p-2 rounded-lg bg-gray-800/50">
+                                         <img src={video.thumbnailUrl} alt={video.title} className="w-28 h-16 object-cover rounded flex-shrink-0" />
+                                         <div className="min-w-0">
+                                             <p className="text-sm font-semibold text-white line-clamp-2">{video.title}</p>
+                                             <p className="text-xs text-gray-400">{video.duration}</p>
+                                         </div>
+                                         <button
+                                             onClick={() => handleAddSingleVideo(video)}
+                                             disabled={isAdded}
+                                             className="ml-auto flex-shrink-0 flex items-center gap-2 bg-gray-700 hover:bg-brand-red text-white font-semibold py-2 px-3 rounded-md text-sm transition-colors disabled:bg-green-600 disabled:cursor-not-allowed"
+                                         >
+                                             <Icon name={isAdded ? "Check" : "Plus"} className="w-4 h-4" />
+                                             <span>{isAdded ? "Adicionado" : "Adicionar"}</span>
+                                         </button>
+                                     </div>
+                                 );
+                             }) : !isLoading && !error && <p className="text-center text-gray-500 pt-8">Use a busca inteligente para encontrar vídeos relevantes em todas as trilhas de conhecimento.</p>}
+                         </div>
+                    </>
+                ) : ( // Playlist mode
                      <>
                         <form onSubmit={handleImportPlaylist} className="relative flex-shrink-0 flex gap-2">
                              <input
@@ -152,17 +242,34 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
                          </form>
                          {playlistResults.length > 0 && (
                             <div className="flex-shrink-0 flex justify-between items-center mt-4 p-2 bg-gray-900 rounded-md">
-                                <span className="text-sm font-semibold text-gray-300">{playlistResults.length} vídeos novos encontrados.</span>
-                                <button onClick={handleAddAllFromPlaylist} className="flex items-center gap-2 bg-brand-red hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-md text-sm">
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedPlaylistVideos.size === playlistResults.length}
+                                        onChange={handleToggleSelectAll}
+                                        className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-red focus:ring-brand-red"
+                                    />
+                                    <span className="text-sm font-semibold text-gray-300">
+                                        {selectedPlaylistVideos.size} de {playlistResults.length} selecionados
+                                    </span>
+                                </div>
+                                <button onClick={handleAddSelectedFromPlaylist} disabled={selectedPlaylistVideos.size === 0} className="flex items-center gap-2 bg-brand-red hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-md text-sm disabled:opacity-50">
                                     <Icon name="Plus" className="w-4 h-4"/>
-                                    Adicionar Todos
+                                    Adicionar Selecionados
                                 </button>
                             </div>
                          )}
                          <div className="flex-grow overflow-y-auto mt-4 pr-2 space-y-2">
                              {error && <p className="text-center text-red-400 p-4">{error}</p>}
                              {playlistResults.length > 0 ? playlistResults.map(video => (
-                                 <div key={video.id} className="flex items-center gap-4 p-2 rounded-lg bg-gray-800/50">
+                                 <div key={video.id} className={`flex items-center gap-4 p-2 rounded-lg bg-gray-800/50 cursor-pointer transition-colors ${selectedPlaylistVideos.has(video.id) ? 'ring-2 ring-brand-red' : 'hover:bg-gray-700/50'}`} onClick={() => handleToggleSelectVideo(video.id)}>
+                                     <input
+                                        type="checkbox"
+                                        checked={selectedPlaylistVideos.has(video.id)}
+                                        onChange={() => handleToggleSelectVideo(video.id)}
+                                        className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-brand-red focus:ring-brand-red flex-shrink-0"
+                                        onClick={e => e.stopPropagation()}
+                                    />
                                      <img src={video.thumbnailUrl} alt={video.title} className="w-28 h-16 object-cover rounded flex-shrink-0" />
                                      <div className="min-w-0">
                                          <p className="text-sm font-semibold text-white line-clamp-2">{video.title}</p>

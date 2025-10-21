@@ -9,6 +9,7 @@ import AddVideoModal from './AddVideoModal';
 
 interface VideoPlayerPageProps {
     category: LearningCategory;
+    allCategories: LearningCategory[];
     watchedVideos: Set<string>;
     onToggleVideoWatched: (videoId: string) => void;
     onAddVideos: (categoryId: string, newVideos: Video[]) => void;
@@ -20,6 +21,7 @@ interface VideoPlayerPageProps {
 
 const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
     category,
+    allCategories,
     watchedVideos,
     onToggleVideoWatched,
     onAddVideos,
@@ -211,6 +213,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                     onAddVideos(category.id, videos);
                 }}
                 existingVideoIds={new Set(category.videos.map(v => v.id))}
+                allCategories={allCategories}
             />
         </>
     );

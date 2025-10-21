@@ -399,6 +399,48 @@ export const searchYouTubeVideos = async (query: string): Promise<Video[]> => {
     }
 };
 
+export const searchVideosByAI = async (query: string, allVideos: Video[]): Promise<Video[]> => {
+    if (allVideos.length === 0) {
+        return [];
+    }
+    try {
+        const response = await handleApiCall<GenerateContentResponse>(() => {
+            const videoDataForPrompt = allVideos.map(v => ({ id: v.id, title: v.title }));
+            const prompt = `Você é um assistente de busca inteligente para uma plataforma de vídeos.
+O usuário está buscando por: "${query}".
+Aqui está uma lista de vídeos disponíveis em formato JSON:
+${JSON.stringify(videoDataForPrompt)}
+
+Analise a busca do usuário e os títulos dos vídeos para encontrar os mais relevantes semanticamente.
+Retorne APENAS um array JSON com os 'id' dos vídeos que melhor correspondem à busca, ordenados por relevância.`;
+
+            return ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING }
+                    }
+                }
+            });
+        }, 'searchVideosByAI');
+
+        const matchedIds = JSON.parse(response.text) as string[];
+        const videoMap = new Map(allVideos.map(v => [v.id, v]));
+        // Retorna os vídeos na ordem que a IA decidiu
+        return matchedIds.map(id => videoMap.get(id)).filter((v): v is Video => !!v);
+
+    } catch (error) {
+        if (error instanceof QuotaExceededError) {
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando busca de simulação.' }}));
+            return allVideos.filter(v => v.title.toLowerCase().includes(query.toLowerCase())).slice(0, 5);
+        }
+        throw error;
+    }
+};
+
 export const searchYouTubeMusic = async (query: string): Promise<YouTubeTrack[]> => {
     const searchQuery = `${query} official audio | ${query} lyrics | ${query} music`;
 

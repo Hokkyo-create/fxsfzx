@@ -68,17 +68,20 @@ const App: React.FC = () => {
             setWatchedVideos(new Set(JSON.parse(savedWatched)));
         }
 
-        const savedVideosByCategory = localStorage.getItem('arc7hive_videos_by_category');
-        if (savedVideosByCategory) {
-            const parsedVideos = JSON.parse(savedVideosByCategory);
-            const categoriesWithSavedVideos = initialCategories.map(cat => ({
-                ...cat,
-                videos: parsedVideos[cat.id] || cat.videos, // Use saved videos or initial (empty)
-            }));
-            setCategories(categoriesWithSavedVideos);
-        } else {
-            setCategories(initialCategories);
-        }
+        const loadPlaylists = async () => {
+            const videosByCategory = await supabaseService.getLearningPlaylists();
+            if (videosByCategory) {
+                 const categoriesWithSavedVideos = initialCategories.map(cat => ({
+                    ...cat,
+                    videos: videosByCategory[cat.id] || cat.videos,
+                }));
+                setCategories(categoriesWithSavedVideos);
+            } else {
+                 setCategories(initialCategories);
+            }
+        };
+
+        loadPlaylists();
         
         const customStyles = localStorage.getItem('arc7hive_custom_styles');
         if (customStyles) {
@@ -176,14 +179,20 @@ const App: React.FC = () => {
         setHasUnsavedPlaylistChanges(true);
     };
 
-    const handleSavePlaylists = () => {
+    const handleSavePlaylists = async () => {
         const videosByCategory = categories.reduce((acc, cat) => {
             acc[cat.id] = cat.videos;
             return acc;
         }, {} as Record<string, Video[]>);
-        localStorage.setItem('arc7hive_videos_by_category', JSON.stringify(videosByCategory));
-        setHasUnsavedPlaylistChanges(false);
-        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Playlists salvas com sucesso para todos os usuários!' }}));
+
+        try {
+            await supabaseService.saveLearningPlaylists(videosByCategory);
+            setHasUnsavedPlaylistChanges(false);
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Playlists salvas com sucesso no banco de dados!' }}));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Falha ao salvar playlists.";
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message }}));
+        }
     };
     
     const handleUpdateProject = (projectId: string, updates: Partial<Project>) => {
@@ -234,6 +243,7 @@ const App: React.FC = () => {
                             onBack={() => setPage('dashboard')} 
                             hasUnsavedChanges={hasUnsavedPlaylistChanges}
                             onSavePlaylists={handleSavePlaylists}
+                            allCategories={categories}
                         />;
             case 'projects':
                 return <ProjectsPage 
