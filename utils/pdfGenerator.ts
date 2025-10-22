@@ -3,41 +3,60 @@ import type { Slide } from '../types';
 
 // Declare external libraries for TypeScript
 declare const jspdf: any;
+declare const html2canvas: any;
 
-export const downloadProjectAsPdf = async (element: HTMLElement, projectName: string): Promise<void> => {
-    // Add a print-friendly class to the element to apply specific styles for PDF generation
-    element.classList.add('pdf-export-mode');
+export const downloadEbookWebpageAsPdf = async (htmlContent: string, projectName: string): Promise<void> => {
+    const container = document.createElement('div');
+    // Style it to be off-screen but rendered with a specific width for PDF layout
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    // A4 width is 210mm. At 96DPI, that's about 794px. 800px is a good round number.
+    container.style.width = '800px'; 
+    container.innerHTML = htmlContent;
+    document.body.appendChild(container);
 
     try {
-        const { jsPDF } = jspdf;
-        
-        const pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'pt',
-            format: 'a4'
+        const canvas = await html2canvas(container, {
+            scale: 2, // Higher resolution for better quality
+            useCORS: true,
+            logging: false,
         });
 
-        // The .html() method uses html2canvas to render the element onto the PDF.
-        // The styles applied by 'pdf-export-mode' will ensure the layout is correct for an A4 page.
-        await pdf.html(element, {
-            callback: function (doc: any) {
-                doc.save(`${projectName.replace(/ /g, '_')}.pdf`);
-            },
-            html2canvas: {
-                scale: 2, // Use a higher scale for better quality text and images
-                backgroundColor: '#0A0A0A', // Ensure background is dark
-                useCORS: true, // Needed for external images if any
-            },
-            autoPaging: 'text', // Tries to avoid cutting text lines in half, works well with our CSS page breaks
-            margin: [50, 40, 50, 40], // Top, Left, Bottom, Right
-        });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = jspdf;
+
+        // PDF units are in mm for A4
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+
+        const ratio = canvasWidth / pdfWidth;
+        const canvasHeightInPdf = canvasHeight / ratio;
+
+        let position = 0;
+
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, canvasHeightInPdf);
+        let heightLeft = canvasHeightInPdf - pdfHeight;
+
+        while (heightLeft > 0) {
+            position -= pdfHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, canvasHeightInPdf);
+            heightLeft -= pdfHeight;
+        }
+        
+        pdf.save(`${projectName.replace(/ /g, '_')}.pdf`);
 
     } catch (error) {
-        console.error("Failed to generate PDF:", error);
-        alert("Ocorreu um erro ao gerar o PDF. Verifique o console para mais detalhes.");
+        console.error("Failed to generate PDF from HTML:", error);
+        throw new Error("Ocorreu um erro ao gerar o PDF. Verifique o console para mais detalhes.");
     } finally {
-        // IMPORTANT: Always remove the class after the process is finished, whether it succeeded or failed.
-        element.classList.remove('pdf-export-mode');
+        // Clean up the temporary container
+        document.body.removeChild(container);
     }
 };
 

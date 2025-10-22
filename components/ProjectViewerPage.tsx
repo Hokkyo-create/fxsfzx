@@ -1,15 +1,16 @@
 
+
 import React, { useState, useRef, useCallback } from 'react';
 import type { Project, Chapter } from '../types';
 import { users } from '../data';
 import Icon from './Icons';
 import Avatar from './Avatar';
-import { downloadProjectAsPdf } from '../utils/pdfGenerator';
+import { downloadEbookWebpageAsPdf } from '../utils/pdfGenerator';
 import EditImageModal from './EditImageModal';
 import InteractiveEbookModal from './InteractiveEbookModal';
 import VideoGenerationModal from './VideoGenerationModal';
 import ShortFormVideoGeneratorModal from './ShortFormVideoGeneratorModal';
-import { generateImagePromptForText, generateImage } from '../services/geminiService';
+import { generateImagePromptForText, generateImage, generateWebpageFromProject } from '../services/geminiService';
 // Fix: Import the EbookCard component instead of redefining it locally.
 import EbookCard from './EbookCard';
 
@@ -139,18 +140,19 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
     const [isGeneratingImage, setIsGeneratingImage] = useState<Record<string, boolean>>({});
 
-    const pdfContentRef = useRef<HTMLDivElement>(null);
-
     const handleDownload = async () => {
-        if (pdfContentRef.current) {
-            setIsDownloadingPdf(true);
-            try {
-                await downloadProjectAsPdf(pdfContentRef.current, project.name);
-            } catch (e) {
-                console.error("PDF download failed", e);
-            } finally {
-                setIsDownloadingPdf(false);
-            }
+        setIsDownloadingPdf(true);
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Gerando layout da página web com IA...' }}));
+        try {
+            const htmlContent = await generateWebpageFromProject(project);
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Layout gerado! Criando PDF...' }}));
+            await downloadEbookWebpageAsPdf(htmlContent, project.name);
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Falha ao baixar PDF.";
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message }}));
+            console.error("PDF download failed", e);
+        } finally {
+            setIsDownloadingPdf(false);
         }
     };
     
@@ -235,14 +237,20 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                             <div className="flex items-center gap-1 sm:gap-2">
                                 <button onClick={() => setIsShortFormVideoModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Criar Vídeo Rápido (TikTok/Reels)"><Icon name="Film" className="w-5 h-5"/></button>
                                 <button onClick={() => setIsQuizModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Quiz Interativo"><Icon name="Sparkles" className="w-5 h-5"/></button>
-                                <button onClick={handleDownload} disabled={isDownloadingPdf} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Baixar PDF"><Icon name="Download" className="w-5 h-5"/></button>
+                                <button onClick={handleDownload} disabled={isDownloadingPdf} className="p-2 rounded-full hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-wait" title="Baixar PDF">
+                                    {isDownloadingPdf ? (
+                                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    ) : (
+                                        <Icon name="Download" className="w-5 h-5"/>
+                                    )}
+                                </button>
                             </div>
                         </div>
                     </div>
                 </header>
                 
                 <div className="container mx-auto flex flex-col lg:flex-row gap-6 p-4 sm:p-6">
-                    <main ref={pdfContentRef} className="flex-grow space-y-8">
+                    <main className="flex-grow space-y-8">
                         {/* Cover Card */}
                         <section className="ebook-card ebook-cover-card bg-dark/50 border border-gray-800 rounded-lg p-8 md:p-12">
                              <div className="relative text-center">
