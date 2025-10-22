@@ -4,6 +4,7 @@ import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, Y
 import * as mockService from './geminiServiceMocks';
 
 let isGeminiQuotaExceeded = false;
+let isApiKeyMissing = false; // New flag
 
 class QuotaExceededError extends Error {
     constructor(message: string) {
@@ -17,20 +18,24 @@ try {
     if (process.env.API_KEY) {
         ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     } else {
-        console.warn("API_KEY environment variable not set. AI features will be unavailable.");
+        console.warn("API_KEY environment variable not set. Using mock data for AI features.");
+        isApiKeyMissing = true;
     }
 } catch (error) {
     console.error("Failed to initialize GoogleGenAI:", error);
+    isApiKeyMissing = true; // Also treat initialization errors as a missing key
 }
 
 
 async function handleApiCall<T>(apiCall: () => Promise<T>, functionName: string): Promise<T> {
+    if (isApiKeyMissing) {
+        // Trigger the mock data fallback in the calling functions.
+        throw new QuotaExceededError("Chave de API não configurada. Usando dados de simulação.");
+    }
     if (isGeminiQuotaExceeded) {
         throw new QuotaExceededError("A cota da API do Gemini já foi excedida nesta sessão.");
     }
-    if (!ai) {
-        throw new Error("Serviço de IA não inicializado. Verifique a chave de API.");
-    }
+    
     try {
         return await apiCall();
     } catch (error: any) {
@@ -516,7 +521,12 @@ export const generateLiveStyles = async (prompt: string): Promise<string> => {
 };
 
 export const generateEbookProjectStream = async function* (topic: string, numChapters: number): AsyncGenerator<string> {
-    if (!ai) throw new Error('Serviço de IA não inicializado.');
+    if (isApiKeyMissing) {
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Chave de API não configurada. Usando dados de simulação.' }}));
+        yield* mockService.getMockEbookStreamGenerator();
+        return; // Stop execution
+    }
+
     try {
         if (isGeminiQuotaExceeded) {
              throw new QuotaExceededError("A cota da API do Gemini já foi excedida nesta sessão.");
