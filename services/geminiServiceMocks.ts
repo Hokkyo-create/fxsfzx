@@ -1,5 +1,3 @@
-
-
 // Fix: Provide the full implementation for the Gemini mock service.
 import { Type } from "@google/genai";
 import type { QuizQuestion, VideoScript, ShortFormVideoScript } from "../types";
@@ -61,8 +59,8 @@ export const getMockImagePrompt = (): string => {
 };
 
 export const getMockImageBase64 = (): string => {
-    // A simple 1x1 transparent PNG
-    return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    // A descriptive SVG placeholder image, base64 encoded.
+    return "PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjgwMCIgdmlld0JveD0iMCAwIDYwMCA4MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgc3R5bGU9ImJhY2tncm91bmQtY29sb3I6IzE0MTQxNDsiPjxzdHlsZT4udGl0bGUgeyBmb250OiBib2xkIDQ4cHggJ0JlYmFzIE5ldWUnLCBzYW5zLXNlcmlmOyBmaWxsOiAjRTUwOTE0OyB0ZXh0LWFuY2hvcjogbWlkZGxlOyB9IC50ZXh0IHsgZm9udDogMjRweCAnU2hhcmUgVGVjaCBNb25vJywgbW9ub3NwYWNlOyBmaWxsOiAjQTBBMEEwOyB0ZXh0LWFuY2hvcjogbWlkZGxlOyB9IC5pY29uIHsgZmlsbDogbm9uZTsgc3Ryb2tlOiAjRTUwOTE0OyBzdHJva2Utd2lkdGg6IDI7IHN0cm9rZS1saW5lY2FwOiByb3VuZDsgc3Ryb2tlLWxpbmVqb2luOiByb3VuZDsgfSA8L3N0eWxlPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDMwMCwgMzUwKSI+PHBhdGggY2xhc3M9Imljb24iIGQ9Ik0xMS4yNSAxMS4yNWwuMDQxLS4wMmEuNzUuNzUgMCAwMTEuMDYzLjg1MmwtLjcwOCAyLjgzNmEuNzUuNzUgMCAwMDEuMDYzLjg1M2wuMDQxLS4wMjFNMjEgMTJhOSA5IDAgMTEtMTggMCA5IDkgMCAwMTE4IDB6bS05LTMuNzVoLjAwOHYuMDA4SDEyVjguMjV6IiB0cmFuc2Zvcm09InNjYWxlKDMuNSkgdHJhbnNsYXRlKC0xMiwgLTEyKSIgLz48dGV4dCB5PSI4MCIgY2xhc3M9InRpdGxlIj5JTUFHRU0gTU9DSzwvdGV4dD48dGV4dCB5PSIxMjAiIGNsYXNzPSJ0ZXh0Ij5Db25maWd1cmUgc3VhIEFQSSBLZXkgbm8gVmVyY2VsPC90ZXh0Pjx0ZXh0IHk9IjE0NSIgY2xhc3M9InRleHQiPnBhcmEgaW1hZ2VucyByZWFpcy48L3RleHQ+PC9nPjwvc3ZnPg==";
 };
 
 export const getMockPromptIdeas = (): string[] => {

@@ -604,6 +604,10 @@ export const generateImage = async (prompt: string): Promise<string> => {
 
     } catch (error) {
         if (error instanceof QuotaExceededError) {
+            const message = isApiKeyMissing 
+                ? "Chave de API não configurada. Usando imagem de simulação." 
+                : "Cota de IA excedida. Usando imagem de simulação.";
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message }}));
             return mockService.getMockImageBase64();
         }
         throw error;
