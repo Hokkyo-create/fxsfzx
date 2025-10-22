@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, GenerateContentResponse, Modality } from "@google/genai";
-import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript, IconName, Slide } from "../types";
+import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript, IconName, Slide, Chapter } from "../types";
 // Fix: Use a namespace import to correctly reference the exported functions from the mock service.
 import * as mockService from './geminiServiceMocks';
 
@@ -561,6 +561,54 @@ Escreva conteúdo substancial e detalhado para cada seção. Não adicione nenhu
         }
     }
 };
+
+export const extendEbookProjectStream = async function* (project: Project): AsyncGenerator<string> {
+    if (isApiKeyMissing) {
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Chave de API não configurada. Usando dados de simulação.' }}));
+        yield* mockService.getMockExtendEbookStreamGenerator(); 
+        return;
+    }
+
+    try {
+        if (isGeminiQuotaExceeded) {
+             throw new QuotaExceededError("A cota da API do Gemini já foi excedida nesta sessão.");
+        }
+        
+        const lastChapterNumber = project.chapters.length;
+        // Simplified existing content to reduce token usage
+        const existingContent = `Título: ${project.name}\nIntrodução: ${project.introduction}\n${project.chapters.map((c, i) => `[CAPÍTULO ${i + 1}: ${c.title.replace(`Capítulo ${i + 1}: `, '')}][ÍCONE: ${c.icon || 'BookOpen'}]`).join('\n')}`;
+        
+        const availableIcons: IconName[] = ['BookOpen', 'Brain', 'Chart', 'Dollar', 'Fire', 'Heart', 'Sparkles', 'Wrench', 'Film', 'Dumbbell', 'Cart'];
+
+        const prompt = `Você é um escritor especialista continuando um ebook existente. O conteúdo atual do ebook é:\n\n${existingContent}\n\nContinue a partir do capítulo ${lastChapterNumber + 1} e escreva mais 10 capítulos. Mantenha o tom, estilo e formato do conteúdo existente. A resposta DEVE estar em markdown, seguindo estritamente esta estrutura para os novos capítulos:
+- Capítulos: Use o formato "[CAPÍTULO X: Título do Capítulo][ÍCONE: NomeDoIcone]"
+- Não inclua uma nova introdução ou conclusão. Comece diretamente com o próximo capítulo.
+
+Para cada tag "[ÍCONE: NomeDoIcone]", escolha um e apenas um nome de ícone da seguinte lista que melhor represente o conteúdo do capítulo: ${availableIcons.join(', ')}.
+Exemplo de capítulo: "[CAPÍTULO ${lastChapterNumber + 1}: Tópicos Avançados][ÍCONE: Brain]"
+Escreva conteúdo substancial e detalhado para cada novo capítulo.`;
+
+        const stream = await ai.models.generateContentStream({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: { systemInstruction: "Você é um escritor especialista em continuar conteúdo educacional estruturado em formato de ebook, seguindo rigorosamente as instruções de formatação." }
+        });
+
+        for await (const chunk of stream) {
+            yield chunk.text;
+        }
+    } catch (error: any) {
+        if (error instanceof QuotaExceededError || (error.message && error.message.toLowerCase().includes('quota'))) {
+            isGeminiQuotaExceeded = true;
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando dados de simulação.' }}));
+            yield* mockService.getMockExtendEbookStreamGenerator();
+        } else {
+            console.error(`Gemini API Error in extendEbookProjectStream:`, error);
+            throw new Error(`Erro na comunicação com a IA: ${error.message}`);
+        }
+    }
+};
+
 
 export const generateImagePromptForText = async (title: string, content: string): Promise<string> => {
     try {

@@ -271,3 +271,42 @@ export const getMockWebpage = (): string => {
 </html>
     `;
 };
+
+export async function* getMockExtendEbookStreamGenerator(): AsyncGenerator<string> {
+    const fullText = `
+[CAPÍTULO 11: O Guia de Estilo][ÍCONE: Pencil]
+Como manter a consistência visual e textual em seus mocks para que eles se pareçam com os dados reais.
+
+[CAPÍTULO 12: Performance e Otimização][ÍCONE: Fire]
+Técnicas para gerar grandes volumes de dados mockados sem impactar a performance da sua aplicação durante o desenvolvimento.
+
+[CAPÍTULO 13: Mocking de Datas e Horas][ÍCONE: Chart]
+Lidando com o desafio de mockar o tempo, fusos horários e durações de forma consistente em seus testes.
+
+[CAPÍTULO 14: Segurança de Dados Mockados][ÍCONE: Heart]
+Por que você nunca deve usar dados de produção para testes e como garantir que seus dados mockados sejam seguros e anônimos.
+
+[CAPÍTULO 15: Mocking para Mobile][ÍCONE: Wrench]
+Estratégias específicas para mockar APIs e dados em aplicações iOS e Android, considerando cenários offline e de rede lenta.
+
+[CAPÍTULO 16: Colaboração em Equipe][ÍCONE: UsersGroup]
+Como compartilhar e versionar seus mocks para que toda a equipe, de QAs a designers, possa usá-los de forma eficaz.
+
+[CAPÍTULO 17: Mocking de Serviços de Terceiros][ÍCONE: Share]
+Aprenda a simular respostas de APIs de terceiros, como gateways de pagamento e serviços de login social.
+
+[CAPÍTULO 18: Geração de Dados com IA][ÍCONE: Brain]
+Uma olhada em como usar modelos de linguagem como o Gemini para gerar dados mockados contextualmente ricos e variados.
+
+[CAPÍTULO 19: Mocking de Estados de Aplicação][ÍCONE: Gear]
+Como usar ferramentas de gerenciamento de estado como Redux ou Zustand para mockar diferentes estados da sua aplicação para depuração.
+
+[CAPÍTULO 20: Medindo o Sucesso][ÍCONE: Dollar]
+Como quantificar o impacto positivo do uso de mock data em métricas como velocidade de desenvolvimento, número de bugs e satisfação do desenvolvedor.
+    `;
+    const words = fullText.split(' ');
+    for (const word of words) {
+        yield word + ' ';
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+}

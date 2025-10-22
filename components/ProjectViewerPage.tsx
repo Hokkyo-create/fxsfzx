@@ -1,7 +1,7 @@
 
 
 import React, { useState, useRef, useCallback } from 'react';
-import type { Project, Chapter } from '../types';
+import type { Project, Chapter, IconName } from '../types';
 import { users } from '../data';
 import Icon from './Icons';
 import Avatar from './Avatar';
@@ -10,7 +10,7 @@ import EditImageModal from './EditImageModal';
 import InteractiveEbookModal from './InteractiveEbookModal';
 import VideoGenerationModal from './VideoGenerationModal';
 import ShortFormVideoGeneratorModal from './ShortFormVideoGeneratorModal';
-import { generateImagePromptForText, generateImage, generateWebpageFromProject } from '../services/geminiService';
+import { generateImagePromptForText, generateImage, generateWebpageFromProject, extendEbookProjectStream } from '../services/geminiService';
 // Fix: Import the EbookCard component instead of redefining it locally.
 import EbookCard from './EbookCard';
 
@@ -138,6 +138,7 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isShortFormVideoModalOpen, setIsShortFormVideoModalOpen] = useState(false);
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+    const [isExtending, setIsExtending] = useState(false);
     const [isGeneratingImage, setIsGeneratingImage] = useState<Record<string, boolean>>({});
 
     const handleDownload = async () => {
@@ -153,6 +154,43 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
             console.error("PDF download failed", e);
         } finally {
             setIsDownloadingPdf(false);
+        }
+    };
+
+    const handleExtendProject = async () => {
+        setIsExtending(true);
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'IA está escrevendo mais capítulos...' }}));
+        try {
+            let newChaptersText = '';
+            const stream = extendEbookProjectStream(project);
+            for await (const chunk of stream) {
+                newChaptersText += chunk;
+            }
+
+            const newChapters: Chapter[] = [];
+            const chapterRegex = /\[CAPÍTULO (\d+):\s*([^\]]+)\]\[ÍCONE:\s*([^\]]+)\]([\s\S]*?)(?=\[CAPÍTULO|\[CONCLUSÃO\]|$)/g;
+            let match;
+            while ((match = chapterRegex.exec(newChaptersText)) !== null) {
+                newChapters.push({
+                    title: `Capítulo ${match[1]}: ${match[2].trim()}`,
+                    icon: match[3].trim() as IconName,
+                    content: match[4].trim(),
+                });
+            }
+
+            if (newChapters.length > 0) {
+                const allChapters = [...project.chapters, ...newChapters];
+                onUpdateProject(project.id, { chapters: allChapters });
+                window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: `${newChapters.length} novos capítulos foram adicionados!` }}));
+            } else {
+                throw new Error("A IA não conseguiu gerar novos capítulos. Tente novamente.");
+            }
+
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "Falha ao estender o ebook.";
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message }}));
+        } finally {
+            setIsExtending(false);
         }
     };
     
@@ -237,13 +275,6 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                             <div className="flex items-center gap-1 sm:gap-2">
                                 <button onClick={() => setIsShortFormVideoModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Criar Vídeo Rápido (TikTok/Reels)"><Icon name="Film" className="w-5 h-5"/></button>
                                 <button onClick={() => setIsQuizModalOpen(true)} className="p-2 rounded-full hover:bg-gray-800 transition-colors" title="Quiz Interativo"><Icon name="Sparkles" className="w-5 h-5"/></button>
-                                <button onClick={handleDownload} disabled={isDownloadingPdf} className="p-2 rounded-full hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-wait" title="Baixar PDF">
-                                    {isDownloadingPdf ? (
-                                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    ) : (
-                                        <Icon name="Download" className="w-5 h-5"/>
-                                    )}
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -329,6 +360,47 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                         <EbookCard title="Conclusão" icon="Sparkles">
                              <p>{project.conclusion}</p>
                         </EbookCard>
+
+                        <section className="mt-8 p-6 bg-dark/50 border border-gray-800 rounded-lg">
+                            <h3 className="text-2xl font-display text-white mb-4">Próximos Passos</h3>
+                            <p className="text-gray-400 mb-6 text-sm">Use o poder da IA para aprimorar e distribuir seu projeto.</p>
+                            <div className="flex flex-col md:flex-row gap-4">
+                                <button
+                                    onClick={handleExtendProject}
+                                    disabled={isExtending}
+                                    className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-md transition-colors disabled:opacity-50 disabled:cursor-wait"
+                                >
+                                    {isExtending ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                            <span>Escrevendo...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Icon name="Pencil" className="w-5 h-5" />
+                                            <span>Gerar mais 10 capítulos com IA</span>
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={handleDownload}
+                                    disabled={isDownloadingPdf}
+                                    className="flex-1 flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-wait"
+                                >
+                                    {isDownloadingPdf ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                            <span>Gerando PDF...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Icon name="Download" className="w-5 h-5" />
+                                            <span>Baixar PDF Estilo Gamma</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </section>
                     </main>
 
                     <SettingsSidebar project={project} onUpdateProject={onUpdateProject} />
