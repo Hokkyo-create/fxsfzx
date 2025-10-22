@@ -123,8 +123,8 @@ const GammaModeModal: React.FC<GammaModeModalProps> = ({ isOpen, onClose, projec
                             onClick={() => setFormat('webpage')}
                             className={`p-4 border-2 rounded-lg text-left transition-colors ${format === 'webpage' ? 'border-brand-red bg-brand-red/10' : 'border-gray-700 hover:border-gray-600'}`}
                         >
-                            <h5 className="font-bold text-white">Página Web</h5>
-                            <p className="text-xs text-gray-400 mt-1">Crie uma página única e responsiva com o conteúdo do seu ebook.</p>
+                            <h5 className="font-bold text-white">Gerar Ebook estilo Gamma</h5>
+                            <p className="text-xs text-gray-400 mt-1">Crie uma página única e estilizada com o conteúdo do seu ebook, pronta para ser baixada como PDF.</p>
                         </button>
                     </div>
                 </div>

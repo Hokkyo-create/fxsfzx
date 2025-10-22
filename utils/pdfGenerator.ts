@@ -62,65 +62,99 @@ export const downloadEbookWebpageAsPdf = async (htmlContent: string, projectName
 
 
 /**
- * Creates a hidden, printable version of the presentation,
- * triggers the browser's print dialog, and then cleans up.
- * Relies on @media print CSS rules in index.html.
- *
+ * Creates a PDF from presentation slides using html2canvas and jspdf.
  * @param slides - The array of slide data.
  * @param images - A record mapping slide index to its base64 image URL.
  * @param projectName - The name of the project for the suggested filename.
  */
-export const downloadPresentationAsPdf = (slides: Slide[], images: Record<number, string>, projectName: string): void => {
-    // 1. Create a container for the printable content
-    const printContainer = document.createElement('div');
-    printContainer.className = 'presentation-print-container';
-    printContainer.setAttribute('aria-hidden', 'true');
+export const downloadPresentationAsPdf = async (slides: Slide[], images: Record<number, string>, projectName: string): Promise<void> => {
+    const { jsPDF } = jspdf;
+    const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [1280, 720] // Standard 16:9 presentation dimensions
+    });
 
-    // 2. Generate the HTML for each slide
-    slides.forEach((slide, index) => {
-        const slideElement = document.createElement('div');
-        slideElement.className = 'presentation-print-slide';
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
 
-        const imageUrl = images[index];
-        if (imageUrl && imageUrl !== 'error') { // Check for error placeholder
-            const img = document.createElement('img');
-            img.src = imageUrl;
-            slideElement.appendChild(img);
+    // Create a temporary container for rendering slides off-screen
+    const renderContainer = document.createElement('div');
+    renderContainer.className = 'presentation-print-container'; // Reuse print styles for layout
+    renderContainer.style.position = 'absolute';
+    renderContainer.style.left = '-9999px';
+    renderContainer.style.top = '0';
+    renderContainer.style.zIndex = '-1';
+    document.body.appendChild(renderContainer);
+
+    try {
+        for (let i = 0; i < slides.length; i++) {
+            const slide = slides[i];
+            
+            // Build the HTML for the current slide
+            const slideElement = document.createElement('div');
+            slideElement.className = 'presentation-print-slide';
+            slideElement.style.width = `${pdfWidth}px`;
+            slideElement.style.height = `${pdfHeight}px`;
+
+            const imageUrl = images[i];
+            if (imageUrl && imageUrl !== 'error') {
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                slideElement.appendChild(img);
+            }
+            const overlay = document.createElement('div');
+            overlay.className = 'overlay';
+            slideElement.appendChild(overlay);
+            const content = document.createElement('div');
+            content.className = 'content';
+            const title = document.createElement('h3');
+            title.textContent = slide.title;
+            content.appendChild(title);
+            const list = document.createElement('ul');
+            slide.content.forEach(point => {
+                const item = document.createElement('li');
+                item.textContent = point;
+                list.appendChild(item);
+            });
+            content.appendChild(list);
+            slideElement.appendChild(content);
+
+            // Render the slide in the off-screen container
+            renderContainer.innerHTML = ''; // Clear previous slide
+            renderContainer.appendChild(slideElement);
+
+            // Ensure the image is fully loaded before capturing with html2canvas
+            const imgEl = slideElement.querySelector('img');
+            if (imgEl) {
+                await new Promise(resolve => {
+                    if (imgEl.complete) return resolve(true);
+                    imgEl.onload = () => resolve(true);
+                    imgEl.onerror = () => { console.error(`Image failed to load for slide ${i}`); resolve(false); };
+                });
+            }
+
+            // Capture the rendered slide as a canvas
+            const canvas = await html2canvas(slideElement, {
+                useCORS: true,
+                scale: 1, // Capture at the specified size
+            });
+            const imgData = canvas.toDataURL('image/png');
+
+            // Add the captured image to the PDF
+            if (i > 0) {
+                pdf.addPage([pdfWidth, pdfHeight], 'landscape');
+            }
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
         }
 
-        const overlay = document.createElement('div');
-        overlay.className = 'overlay';
-        slideElement.appendChild(overlay);
-        
-        const content = document.createElement('div');
-        content.className = 'content';
-        
-        const title = document.createElement('h3');
-        title.textContent = slide.title;
-        content.appendChild(title);
-        
-        const list = document.createElement('ul');
-        slide.content.forEach(point => {
-            const item = document.createElement('li');
-            item.textContent = point;
-            list.appendChild(item);
-        });
-        content.appendChild(list);
+        pdf.save(`${projectName.replace(/ /g, '_')}_presentation.pdf`);
 
-        slideElement.appendChild(content);
-        printContainer.appendChild(slideElement);
-    });
-    
-    // 3. Append to the body, print, and then remove
-    document.body.appendChild(printContainer);
-    
-    // Set document title for printing
-    const originalTitle = document.title;
-    document.title = `${projectName.replace(/ /g, '_')}.pdf`;
-
-    window.print();
-    
-    // Cleanup
-    document.body.removeChild(printContainer);
-    document.title = originalTitle;
+    } catch (error) {
+        console.error("Failed to generate presentation PDF:", error);
+        throw new Error("Ocorreu um erro ao gerar o PDF da apresentação.");
+    } finally {
+        // Clean up the temporary container
+        document.body.removeChild(renderContainer);
+    }
 };

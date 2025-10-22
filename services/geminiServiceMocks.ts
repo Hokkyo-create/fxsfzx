@@ -32,19 +32,43 @@ export const getMockLiveStyles = (): string => {
 
 export async function* getMockEbookStreamGenerator(): AsyncGenerator<string> {
     const fullText = `
-# O Guia Definitivo de Mock Data
+# O Guia Definitivo de Mock Data para Desenvolvedores
 
 [INTRODUÇÃO]
-Bem-vindo ao mundo dos dados simulados! Este ebook irá guiá-lo através dos conceitos fundamentais e das melhores práticas para gerar e utilizar mock data em seus projetos.
+Bem-vindo ao mundo dos dados simulados! Este ebook é o seu guia completo para dominar a arte de criar e usar dados mockados em seus projetos. Desde testes unitários até o desenvolvimento de interfaces complexas, os dados mockados são a chave para um fluxo de trabalho mais rápido e eficiente.
 
-[CAPÍTULO 1: O que são Mock Data?]
-Neste capítulo, exploramos a definição de mock data, por que são essenciais para o desenvolvimento de software moderno, e as diferenças entre mock data, dados de teste e dados reais.
+[CAPÍTULO 1: Fundamentos Essenciais][ÍCONE: Brain]
+Exploramos a definição de 'mock data'. Discutimos por que eles são cruciais e a diferença fundamental entre dados mockados, stubs e fakes.
 
-[CAPÍTULO 2: Ferramentas Populares]
-Analisamos as ferramentas mais populares do mercado para geração de dados, como Faker.js, Mockaroo, e as funcionalidades integradas de bibliotecas como a MSW (Mock Service Worker).
+[CAPÍTULO 2: Geração de Dados com Faker.js][ÍCONE: Wrench]
+Um mergulho profundo na biblioteca Faker.js. Aprenda a gerar nomes, endereços, textos e muito mais para popular suas aplicações durante o desenvolvimento.
+
+[CAPÍTULO 3: Mockando APIs com MSW][ÍCONE: Share]
+Descubra como usar o Mock Service Worker (MSW) para interceptar requisições de rede e retornar respostas mockadas, permitindo que o front-end trabalhe de forma independente do back-end.
+
+[CAPÍTULO 4: Estratégias de Teste][ÍCONE: Check]
+Veja como dados mockados são vitais para testes unitários, de integração e end-to-end, garantindo que seu código seja robusto e confiável.
+
+[CAPÍTULO 5: Dados para Componentes de UI][ÍCONE: Film]
+Aprenda a criar cenários de dados para seus componentes de UI, cobrindo todos os casos de uso, desde estados de carregamento e erro até a exibição de listas longas.
+
+[CAPÍTULO 6: Mockaroo e Outras Ferramentas Visuais][ÍCONE: Chart]
+Analisamos ferramentas baseadas em UI como o Mockaroo, que permitem gerar grandes volumes de dados em formatos como CSV, JSON e SQL sem escrever uma linha de código.
+
+[CAPÍTULO 7: O Lado Comercial][ÍCONE: Dollar]
+Entenda como o uso de dados mockados pode economizar tempo e dinheiro para sua equipe e sua empresa, resultando em um ROI positivo.
+
+[CAPÍTULO 8: Desafios e Armadilhas][ÍCONE: Fire]
+Discutimos os problemas comuns, como dados que não representam a realidade e a manutenção de mocks complexos, e como evitá-los.
+
+[CAPÍTULO 9: Integração Contínua (CI/CD)][ÍCONE: Gear]
+Veja como integrar a geração de dados mockados em seu pipeline de CI/CD para automatizar testes e garantir a qualidade contínua do software.
+
+[CAPÍTULO 10: O Futuro dos Dados Sintéticos][ÍCONE: Sparkles]
+Exploramos as tendências emergentes, incluindo a geração de dados sintéticos com IA para criar conjuntos de dados ainda mais realistas e complexos para treinamento de modelos de machine learning.
 
 [CONCLUSÃO]
-Agora você está equipado com o conhecimento para acelerar seu desenvolvimento, criar testes mais robustos e construir aplicações melhores com o poder dos mock data.
+Parabéns! Você agora tem o conhecimento necessário para implementar estratégias de mock data eficazes em qualquer projeto. Use esse poder para construir, testar e inovar mais rápido do que nunca.
     `;
 
     const words = fullText.split(' ');

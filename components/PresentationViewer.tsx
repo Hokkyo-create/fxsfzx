@@ -71,11 +71,12 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slides, project
 
             await Promise.all(promises);
             
-            downloadPresentationAsPdf(slides, allImages, projectName);
+            await downloadPresentationAsPdf(slides, allImages, projectName);
 
         } catch (error) {
             console.error("PDF download failed", error);
-            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Falha ao preparar o PDF para download.' }}));
+            const message = error instanceof Error ? error.message : 'Falha ao preparar o PDF para download.';
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message }}));
         } finally {
             setIsDownloading(false);
         }
