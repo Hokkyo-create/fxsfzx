@@ -532,7 +532,7 @@ export const generateEbookProjectStream = async function* (topic: string, numCha
              throw new QuotaExceededError("A cota da API do Gemini já foi excedida nesta sessão.");
         }
         const availableIcons: IconName[] = ['BookOpen', 'Brain', 'Chart', 'Dollar', 'Fire', 'Heart', 'Sparkles', 'Wrench', 'Film', 'Dumbbell', 'Cart'];
-        const prompt = `Crie um ebook detalhado sobre "${topic}" com ${numChapters} capítulos. A resposta DEVE estar em markdown, seguindo estritamente esta estrutura:
+        const prompt = `Crie um ebook detalhado sobre "${topic}" com 10 a 12 capítulos. A resposta DEVE estar em markdown, seguindo estritamente esta estrutura:
 - Título do Ebook: Comece a primeira linha com "# "
 - Introdução: Comece com a tag "[INTRODUÇÃO]"
 - Capítulos: Use o formato "[CAPÍTULO X: Título do Capítulo][ÍCONE: NomeDoIcone]"
@@ -743,7 +743,7 @@ export const generateWebpageFromProject = async (project: Project): Promise<stri
             const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}\nConclusão: ${project.conclusion}`;
             return ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Crie o código HTML completo para uma página web de uma única página (single-page) baseada no conteúdo do ebook a seguir. O resultado deve ser um único arquivo HTML. Use CSS inline ou em uma tag <style> para estilização. O design deve ser moderno, responsivo e com um tema escuro (dark theme) que combine com a estética ARC7HIVE (preto, cinza escuro, com destaques em vermelho #E50914). Não inclua JavaScript. Retorne apenas o código HTML, começando com <!DOCTYPE html>. \n\nEBOOK:\n${content.substring(0, 8000)}`,
+                contents: `Crie o código HTML completo para uma página web de uma única página (single-page) baseada no conteúdo do ebook a seguir. O resultado deve ser um único arquivo HTML. Use CSS em uma tag <style> para estilização. O design deve ser moderno, profissional e responsivo, ideal para ser exportado como um PDF elegante. Use um tema escuro (dark theme) que combine com a estética ARC7HIVE (cores base: #121212, #1e1e1e) com destaques em vermelho (#E50914). Para elementos secundários, você pode usar uma cor de destaque que complemente o tópico do ebook: "${project.name}". Garanta que o texto seja legível e a tipografia seja limpa (ex: use fontes do Google Fonts como 'Inter' ou 'Poppins'). Não inclua JavaScript. Retorne apenas o código HTML, começando com <!DOCTYPE html>. \n\nEBOOK:\n${content.substring(0, 8000)}`,
                 config: { systemInstruction: "Você é um desenvolvedor front-end especialista que cria páginas web elegantes e bem estruturadas a partir de conteúdo textual." }
             });
         }, 'generateWebpageFromProject');

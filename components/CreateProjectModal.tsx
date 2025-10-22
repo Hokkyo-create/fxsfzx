@@ -11,7 +11,6 @@ interface CreateProjectModalProps {
 
 const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose, onStartGeneration }) => {
     const [topic, setTopic] = useState('');
-    const [chapters, setChapters] = useState(5);
     const [error, setError] = useState('');
     
     if (!isOpen) return null;
@@ -22,12 +21,8 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
             setError('Por favor, insira um tópico para o projeto.');
             return;
         }
-        if (chapters < 1) {
-            setError('O número de capítulos deve ser pelo menos 1.');
-            return;
-        }
         setError('');
-        onStartGeneration({ topic, chapters });
+        onStartGeneration({ topic, chapters: 10 }); // Always generate a detailed ebook
     }
 
     return (
@@ -41,7 +36,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
                     <Icon name="Brain" className="w-6 h-6 text-brand-red" />
                     <h3 className="text-xl font-display tracking-wider text-white">Criar Novo Projeto com IA</h3>
                 </div>
-                <p className="text-gray-400 mb-6">Descreva o tópico e defina o número de capítulos. A IA cuidará da estrutura e do conteúdo inicial para você.</p>
+                <p className="text-gray-400 mb-6">Descreva o tópico e a IA cuidará da estrutura e do conteúdo inicial para você, criando um ebook completo.</p>
                 
                  <div className="space-y-4">
                     <div>
@@ -55,21 +50,10 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
                            className="w-full bg-gray-900 border border-gray-700 rounded-md py-2 px-4 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition"
                        />
                     </div>
-                    <div>
-                        <label htmlFor="chapters" className="text-sm font-medium text-gray-300 block mb-2">Número de Capítulos</label>
-                        <input
-                           id="chapters"
-                           type="number"
-                           value={chapters}
-                           onChange={(e) => setChapters(parseInt(e.target.value, 10))}
-                           min="1"
-                           className="w-full bg-gray-900 border border-gray-700 rounded-md py-2 px-4 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition"
-                       />
-                    </div>
                 </div>
 
                 <div className="text-xs text-gray-500 mt-4 p-3 bg-gray-900/50 rounded-md border border-gray-800">
-                    <strong>Nota:</strong> A geração de texto para muitos capítulos consome recursos da IA e pode impactar a cota de uso da API.
+                    <strong>Nota:</strong> A IA agora criará um ebook mais completo, com 10 a 12 capítulos, para garantir um conteúdo mais aprofundado.
                 </div>
 
                 {error && <p className="text-sm text-center text-red-400 mt-4">{error}</p>}

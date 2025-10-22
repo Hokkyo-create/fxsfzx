@@ -50,6 +50,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slides, project
 
     const handleDownload = async () => {
         setIsDownloading(true);
+        window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Preparando imagens para o PDF...' }}));
         try {
             const allImages: Record<number, string> = { ...images };
             const promises: Promise<void>[] = [];
