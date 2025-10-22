@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import type { User, LearningCategory, NextVideoInfo, Video, Project, MeetingMessage, OnlineUser, Notification, Song } from './types';
 import { categories as initialCategories, users } from './data';
@@ -32,7 +33,7 @@ const App: React.FC = () => {
     const [pageData, setPageData] = useState<any>(null);
 
     // --- Data State ---
-    const [categories, setCategories] = useState<LearningCategory[]>([]);
+    const [categories, setCategories] = useState<LearningCategory[]>(initialCategories);
     const [projects, setProjects] = useState<Project[]>([]);
     const [watchedVideos, setWatchedVideos] = useState<Set<string>>(new Set());
     const [meetingMessages, setMeetingMessages] = useState<MeetingMessage[]>([]);
@@ -52,7 +53,7 @@ const App: React.FC = () => {
 
     // --- Effects ---
 
-    // Load saved state from localStorage
+    // Load saved state from localStorage (runs once on initial load)
     useEffect(() => {
         const savedUser = localStorage.getItem('arc7hive_user');
         if (savedUser) {
@@ -66,7 +67,20 @@ const App: React.FC = () => {
         if (savedWatched) {
             setWatchedVideos(new Set(JSON.parse(savedWatched)));
         }
+        
+        const customStyles = localStorage.getItem('arc7hive_custom_styles');
+        if (customStyles) {
+            const styleElement = document.createElement('style');
+            styleElement.id = 'custom-admin-styles';
+            styleElement.innerHTML = customStyles;
+            document.head.appendChild(styleElement);
+        }
+    }, []);
 
+    // Firebase/Supabase Listeners and data fetching that depends on the user
+    useEffect(() => {
+        if (!user) return;
+        
         const loadPlaylists = async () => {
             const videosByCategory = await supabaseService.getLearningPlaylists();
             if (videosByCategory) {
@@ -81,19 +95,6 @@ const App: React.FC = () => {
         };
 
         loadPlaylists();
-        
-        const customStyles = localStorage.getItem('arc7hive_custom_styles');
-        if (customStyles) {
-            const styleElement = document.createElement('style');
-            styleElement.id = 'custom-admin-styles';
-            styleElement.innerHTML = customStyles;
-            document.head.appendChild(styleElement);
-        }
-    }, []);
-
-    // Firebase/Supabase Listeners
-    useEffect(() => {
-        if (!user) return;
 
         const unsubMessages = firebaseService.setupMessagesListener(setMeetingMessages);
         const unsubTyping = firebaseService.setupTypingListener(users => setTypingUsers(new Set(users)));

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { ProjectGenerationConfig, Project, Chapter, User, IconName } from '../types';
-import { generateEbookProjectStream, generateImagePromptForText, generateImage } from '../services/geminiService';
+import { generateEbookProjectStream } from '../services/geminiService';
 import Icon from './Icons';
 
 interface ProjectGenerationPageProps {
@@ -33,7 +33,7 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ user, con
                 const title = titleMatch ? titleMatch[1] : config.topic;
                 setProjectTitle(title);
 
-                const introMatch = fullText.match(/\[INTRODUÇÃO\]([\s\S]*?)\[CAPÍTULO 1:/);
+                const introMatch = fullText.match(/\[INTRODUÇÃO\]([\s\S]*?)(\[CAPÍTULO 1:|\n\n\[CAPÍTULO 1:)/);
                 const introduction = introMatch ? introMatch[1].trim() : '';
 
                 const conclusionMatch = fullText.match(/\[CONCLUSÃO\]([\s\S]*)/);
@@ -62,24 +62,6 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ user, con
                     createdBy: user.name,
                     avatarUrl: user.avatarUrl,
                 };
-
-                // Step 3: Generate Images if requested
-                if (config.generateImages) {
-                    // Generate Cover Image
-                    setStatus('Gerando imagem da capa...');
-                    const coverPrompt = await generateImagePromptForText(title, introduction);
-                    const coverImageBase64 = await generateImage(coverPrompt);
-                    newProjectData.coverImageUrl = `data:image/png;base64,${coverImageBase64}`;
-
-                    // Generate Chapter Images
-                    for (let i = 0; i < chapters.length; i++) {
-                        setStatus(`Gerando imagem para o Capítulo ${i + 1}/${chapters.length}...`);
-                        const chapter = chapters[i];
-                        const chapterPrompt = await generateImagePromptForText(chapter.title, chapter.content);
-                        const chapterImageBase64 = await generateImage(chapterPrompt);
-                        chapter.imageUrl = `data:image/png;base64,${chapterImageBase64}`;
-                    }
-                }
                 
                 setStatus('Finalizando...');
                 onGenerationComplete(newProjectData);

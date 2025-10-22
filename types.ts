@@ -67,7 +67,6 @@ export interface Project {
 export interface ProjectGenerationConfig {
     topic: string;
     chapters: number;
-    generateImages: boolean;
 }
 
 export interface QuizQuestion {

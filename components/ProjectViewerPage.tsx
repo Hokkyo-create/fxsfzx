@@ -1,8 +1,6 @@
 
-
-
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { Project, Chapter, IconName } from '../types';
+import React, { useState, useRef, useCallback } from 'react';
+import type { Project, Chapter } from '../types';
 import { users } from '../data';
 import Icon from './Icons';
 import Avatar from './Avatar';
@@ -12,6 +10,8 @@ import InteractiveEbookModal from './InteractiveEbookModal';
 import VideoGenerationModal from './VideoGenerationModal';
 import ShortFormVideoGeneratorModal from './ShortFormVideoGeneratorModal';
 import { generateImagePromptForText, generateImage } from '../services/geminiService';
+// Fix: Import the EbookCard component instead of redefining it locally.
+import EbookCard from './EbookCard';
 
 interface ProjectViewerPageProps {
     project: Project;
@@ -29,7 +29,8 @@ const SettingsSidebar: React.FC<{ project: Project; onUpdateProject: ProjectView
 
     const availableUsers = users.filter(u => u.name !== project.createdBy && !collaborators.includes(u.name));
     
-    useEffect(() => {
+    // Sync with project prop changes
+    React.useEffect(() => {
         setStatus(project.status || 'draft');
         setPrice(project.price || 0);
         setPublicDescription(project.publicDescription || '');
@@ -38,13 +39,17 @@ const SettingsSidebar: React.FC<{ project: Project; onUpdateProject: ProjectView
 
     const handleAddCollaborator = () => {
         if (selectedUser && !collaborators.includes(selectedUser)) {
-            setCollaborators([...collaborators, selectedUser]);
+            const newCollaborators = [...collaborators, selectedUser];
+            setCollaborators(newCollaborators);
+            onUpdateProject(project.id, { collaborators: newCollaborators }); // Update immediately
             setSelectedUser('');
         }
     };
     
     const handleRemoveCollaborator = (name: string) => {
-        setCollaborators(collaborators.filter(c => c !== name));
+        const newCollaborators = collaborators.filter(c => c !== name);
+        setCollaborators(newCollaborators);
+        onUpdateProject(project.id, { collaborators: newCollaborators }); // Update immediately
     };
 
     const handleSaveChanges = () => {
@@ -125,42 +130,6 @@ const SettingsSidebar: React.FC<{ project: Project; onUpdateProject: ProjectView
     )
 }
 
-const EbookCard: React.FC<{
-    title: string;
-    icon?: IconName;
-    imageUrl?: string;
-    onEditImage?: () => void;
-    children: React.ReactNode;
-    className?: string;
-}> = ({ title, icon, imageUrl, onEditImage, children, className = '' }) => {
-    return (
-        <section className={`ebook-card bg-dark/50 border border-gray-800 rounded-lg p-8 md:p-12 shadow-lg ${className}`}>
-            <div className="flex items-center gap-4 mb-6">
-                {icon && <div className="w-12 h-12 flex-shrink-0 bg-brand-red/10 rounded-lg flex items-center justify-center border border-brand-red/20"><Icon name={icon} className="w-7 h-7 text-brand-red" /></div>}
-                <h2 className="text-2xl md:text-3xl font-display tracking-wider text-white">{title}</h2>
-            </div>
-            <div className={imageUrl ? "md:grid md:grid-cols-2 gap-8 items-start" : ""}>
-                {imageUrl && (
-                    <div className="relative group mb-6 md:mb-0 rounded-lg overflow-hidden">
-                        <img src={imageUrl} alt={`Imagem para ${title}`} className="w-full h-auto object-cover" />
-                        {onEditImage && (
-                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <button onClick={onEditImage} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
-                                    <Icon name="Pencil" className="w-4 h-4" /> Editar Imagem
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
-                <div className="prose-invert prose-p:text-gray-300 prose-p:leading-relaxed whitespace-pre-wrap">
-                    {children}
-                </div>
-            </div>
-        </section>
-    );
-};
-
-
 const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, onUpdateProject }) => {
     const [isEditCoverModalOpen, setIsEditCoverModalOpen] = useState(false);
     const [isEditChapterImageModalOpen, setIsEditChapterImageModalOpen] = useState<number | null>(null);
@@ -168,6 +137,7 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [isShortFormVideoModalOpen, setIsShortFormVideoModalOpen] = useState(false);
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+    const [isGeneratingImage, setIsGeneratingImage] = useState<Record<string, boolean>>({});
 
     const pdfContentRef = useRef<HTMLDivElement>(null);
 
@@ -209,6 +179,41 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
         setIsEditChapterImageModalOpen(null);
     };
 
+    const handleGenerateCover = async () => {
+        setIsGeneratingImage(prev => ({ ...prev, cover: true }));
+        try {
+            const prompt = await getCoverPrompt();
+            const base64 = await generateImage(prompt);
+            const newImageUrl = `data:image/png;base64,${base64}`;
+            onUpdateProject(project.id, { coverImageUrl: newImageUrl });
+        } catch (error) {
+             const message = error instanceof Error ? error.message : "Falha ao gerar imagem da capa.";
+             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message }}));
+        } finally {
+            setIsGeneratingImage(prev => ({ ...prev, cover: false }));
+        }
+    };
+
+    const handleGenerateChapterImage = async (chapterIndex: number) => {
+        const key = `chapter-${chapterIndex}`;
+        setIsGeneratingImage(prev => ({ ...prev, [key]: true }));
+        try {
+            const chapter = project.chapters[chapterIndex];
+            const prompt = await getChapterPrompt(chapter);
+            const base64 = await generateImage(prompt);
+            const newImageUrl = `data:image/png;base64,${base64}`;
+
+            const updatedChapters = [...project.chapters];
+            updatedChapters[chapterIndex] = { ...updatedChapters[chapterIndex], imageUrl: newImageUrl };
+            onUpdateProject(project.id, { chapters: updatedChapters });
+        } catch (error) {
+             const message = error instanceof Error ? error.message : `Falha ao gerar imagem para o capítulo ${chapterIndex + 1}.`;
+             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message }}));
+        } finally {
+            setIsGeneratingImage(prev => ({ ...prev, [key]: false }));
+        }
+    };
+
     return (
         <>
             <div className="min-h-screen bg-darker text-white font-sans">
@@ -241,7 +246,7 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                         {/* Cover Card */}
                         <section className="ebook-card ebook-cover-card bg-dark/50 border border-gray-800 rounded-lg p-8 md:p-12">
                              <div className="relative text-center">
-                                {project.coverImageUrl && (
+                                {project.coverImageUrl ? (
                                      <div className="relative group max-w-lg mx-auto aspect-[3/4] rounded-lg overflow-hidden shadow-2xl shadow-black/50">
                                         <img src={project.coverImageUrl} alt={project.name} className="w-full h-full object-cover" />
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -250,6 +255,20 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                                             </button>
                                         </div>
                                      </div>
+                                ) : (
+                                    <div className="max-w-lg mx-auto aspect-[3/4] rounded-lg bg-dark/30 border border-dashed border-gray-700 flex flex-col items-center justify-center p-8">
+                                        <p className="text-gray-400 mb-4">Gere uma capa com IA para seu ebook.</p>
+                                        <button 
+                                            onClick={handleGenerateCover} 
+                                            disabled={isGeneratingImage['cover']}
+                                            className="flex items-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-2 px-6 rounded-md transition-colors disabled:opacity-50 disabled:cursor-wait"
+                                        >
+                                            {isGeneratingImage['cover'] 
+                                                ? <><svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Gerando...</span></>
+                                                : <><Icon name="Sparkles" className="w-5 h-5" /><span>Gerar Capa</span></>
+                                            }
+                                        </button>
+                                    </div>
                                 )}
                                 <h1 className="text-4xl md:text-5xl font-display tracking-wider text-white mt-8">{project.name}</h1>
                                 <p className="text-gray-400 mt-2">por {project.createdBy}</p>
@@ -263,15 +282,39 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
 
                         {/* Chapters */}
                         {project.chapters.map((chapter, index) => (
-                            <EbookCard
-                                key={index}
-                                title={chapter.title}
-                                icon={chapter.icon}
-                                imageUrl={chapter.imageUrl}
-                                onEditImage={() => setIsEditChapterImageModalOpen(index)}
-                            >
-                                <p>{chapter.content}</p>
-                            </EbookCard>
+                            <React.Fragment key={index}>
+                                <EbookCard title={chapter.title} icon={chapter.icon}>
+                                    <p>{chapter.content}</p>
+                                </EbookCard>
+                                
+                                {/* Image Divider Section */}
+                                <div className="my-0 py-8 px-4 bg-dark/30 border-y-2 border-gray-900 flex flex-col items-center justify-center text-center">
+                                    { chapter.imageUrl ? (
+                                        <div className="relative group max-w-lg w-full">
+                                            <img src={chapter.imageUrl} alt={`Imagem para ${chapter.title}`} className="w-full h-auto object-cover rounded-lg shadow-lg" />
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+                                                <button onClick={() => setIsEditChapterImageModalOpen(index)} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white font-bold py-2 px-4 rounded-md hover:bg-white/30">
+                                                    <Icon name="Pencil" className="w-4 h-4" /> Editar Imagem
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <p className="text-gray-400 mb-4">Gere uma imagem com IA para ilustrar o capítulo acima.</p>
+                                            <button 
+                                                onClick={() => handleGenerateChapterImage(index)} 
+                                                disabled={isGeneratingImage[`chapter-${index}`]}
+                                                className="flex items-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-2 px-6 rounded-md transition-colors disabled:opacity-50 disabled:cursor-wait"
+                                            >
+                                                {isGeneratingImage[`chapter-${index}`] 
+                                                    ? <><svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Gerando...</span></>
+                                                    : <><Icon name="Sparkles" className="w-5 h-5" /><span>Gerar Imagem</span></>
+                                                }
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </React.Fragment>
                         ))}
                         
                         {/* Conclusion Card */}

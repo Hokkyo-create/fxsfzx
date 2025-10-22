@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, GenerateContentResponse, GenerateImagesResponse, Modality } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse, Modality } from "@google/genai";
 import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript, IconName } from "../types";
 // Fix: Use a namespace import to correctly reference the exported functions from the mock service.
 import * as mockService from './geminiServiceMocks';
@@ -556,10 +556,14 @@ export const generateImagePromptForText = async (title: string, content: string)
     try {
         const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Crie um prompt curto e visual para gerar uma imagem para um texto com o título "${title}" e conteúdo "${content.substring(0, 300)}...". O prompt deve ser em inglês, focado em arte digital, cinematográfico e com cores vibrantes. Ex: 'digital art of a futuristic city at sunset, cinematic lighting, vibrant colors'.`,
-            config: { systemInstruction: "Você é um especialista em criar prompts para IAs de geração de imagem." }
+            contents: `Create a short, visually descriptive prompt in English to generate a cover image for an ebook titled "${title}" with the following content: "${content.substring(0, 400)}...".
+The prompt should be suitable for an AI image generator. Focus on creating a compelling, artistic, and relevant visual.
+Include keywords like: "digital art", "cinematic lighting", "vibrant colors", "epic", "detailed illustration".
+Example: 'digital art of a futuristic city at sunset, cinematic lighting, vibrant colors, epic detailed illustration'.
+Respond with only the prompt text.`,
+            config: { systemInstruction: "You are an expert in creating powerful prompts for AI image generators." }
         }), 'generateImagePromptForText');
-        return response.text.trim();
+        return response.text.trim().replace(/"/g, ''); // Remove quotes that the model sometimes adds
     } catch (error) {
         if (error instanceof QuotaExceededError) {
             return mockService.getMockImagePrompt();
@@ -570,12 +574,24 @@ export const generateImagePromptForText = async (title: string, content: string)
 
 export const generateImage = async (prompt: string): Promise<string> => {
     try {
-        const response = await handleApiCall<GenerateImagesResponse>(() => ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt: prompt,
-            config: { numberOfImages: 1, outputMimeType: 'image/png' }
+        const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [{ text: prompt }],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
         }), 'generateImage');
-        return response.generatedImages[0].image.imageBytes;
+
+        // Extract the image data from the response
+        const imagePart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
+        if (imagePart?.inlineData) {
+            return imagePart.inlineData.data;
+        }
+
+        throw new Error("A resposta da IA não continha uma imagem válida.");
+
     } catch (error) {
         if (error instanceof QuotaExceededError) {
             return mockService.getMockImageBase64();

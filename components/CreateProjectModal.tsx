@@ -12,7 +12,6 @@ interface CreateProjectModalProps {
 const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose, onStartGeneration }) => {
     const [topic, setTopic] = useState('');
     const [chapters, setChapters] = useState(5);
-    const [generateImages, setGenerateImages] = useState(true);
     const [error, setError] = useState('');
     
     if (!isOpen) return null;
@@ -28,7 +27,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
             return;
         }
         setError('');
-        onStartGeneration({ topic, chapters, generateImages });
+        onStartGeneration({ topic, chapters });
     }
 
     return (
@@ -67,20 +66,10 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose
                            className="w-full bg-gray-900 border border-gray-700 rounded-md py-2 px-4 text-white focus:ring-2 focus:ring-brand-red focus:border-brand-red transition"
                        />
                     </div>
-                    <div className="flex items-center gap-3 pt-2">
-                        <input
-                            id="generate-images"
-                            type="checkbox"
-                            checked={generateImages}
-                            onChange={(e) => setGenerateImages(e.target.checked)}
-                            className="h-5 w-5 rounded border-gray-600 bg-gray-800 text-brand-red focus:ring-brand-red"
-                        />
-                         <label htmlFor="generate-images" className="text-sm font-medium text-gray-300">Gerar imagens para capa e capítulos?</label>
-                    </div>
                 </div>
 
                 <div className="text-xs text-gray-500 mt-4 p-3 bg-gray-900/50 rounded-md border border-gray-800">
-                    <strong>Nota:</strong> A geração de muitos capítulos e imagens consome mais recursos da IA e pode esgotar a cota de uso da API mais rapidamente.
+                    <strong>Nota:</strong> A geração de texto para muitos capítulos consome recursos da IA e pode impactar a cota de uso da API.
                 </div>
 
                 {error && <p className="text-sm text-center text-red-400 mt-4">{error}</p>}
