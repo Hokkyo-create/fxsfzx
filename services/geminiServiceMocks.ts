@@ -1,6 +1,6 @@
 // Fix: Provide the full implementation for the Gemini mock service.
 import { Type } from "@google/genai";
-import type { QuizQuestion, VideoScript, ShortFormVideoScript } from "../types";
+import type { QuizQuestion, VideoScript, ShortFormVideoScript, Slide } from "../types";
 
 export const getMockMeetingChatResponse = (): string => {
     return "Claro! O ponto principal da última reunião foi a decisão de focar no marketing de conteúdo para o próximo trimestre. Alguma outra pergunta?";
@@ -170,4 +170,80 @@ export const shortFormVideoScriptSchema = {
         musicSuggestion: { type: Type.STRING, description: "Keywords for background music style (e.g., 'upbeat electronic', 'lo-fi hip hop')." }
     },
     required: ["hook", "scenes", "cta", "musicSuggestion"]
+};
+
+export const presentationSchema = {
+    type: Type.ARRAY,
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            title: { type: Type.STRING },
+            content: { type: Type.ARRAY, items: { type: Type.STRING } },
+            imagePrompt: { type: Type.STRING, description: "A descriptive prompt in English for an AI image generator to create a background image for this slide." }
+        },
+        required: ["title", "content", "imagePrompt"]
+    }
+};
+
+export const getMockPresentation = (): Slide[] => {
+    return [
+        {
+            title: "O que são Mock Data?",
+            content: [
+                "Definição e importância.",
+                "Diferenças de dados de teste.",
+                "Essenciais para desenvolvimento moderno."
+            ],
+            imagePrompt: "A programmer looking at a screen with abstract data visualizations, digital art, blue and purple glow"
+        },
+        {
+            title: "Ferramentas Populares",
+            content: [
+                "Faker.js para dados realistas.",
+                "Mockaroo para interfaces visuais.",
+                "MSW para interceptar requisições."
+            ],
+            imagePrompt: "A collection of logos for different software tools, arranged neatly on a grid, clean design, tech aesthetic"
+        },
+        {
+            title: "Conclusão",
+            content: [
+                "Acelere seu desenvolvimento.",
+                "Crie testes mais robustos.",
+                "Construa aplicações melhores."
+            ],
+            imagePrompt: "A rocket launching into the sky, symbolizing speed and progress, vibrant colors, detailed illustration"
+        }
+    ];
+};
+
+
+export const getMockWebpage = (): string => {
+    return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O Guia Definitivo de Mock Data</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; background-color: #121212; color: #e0e0e0; margin: 0; padding: 2rem; }
+        .container { max-width: 800px; margin: auto; background-color: #1e1e1e; padding: 2rem; border-radius: 8px; border: 1px solid #333; }
+        h1, h2 { color: #E50914; border-bottom: 2px solid #E50914; padding-bottom: 0.5rem; }
+        p { margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>O Guia Definitivo de Mock Data</h1>
+        <h2>Introdução</h2>
+        <p>Bem-vindo ao mundo dos dados simulados! Este guia irá guiá-lo através dos conceitos fundamentais e das melhores práticas para gerar e utilizar mock data em seus projetos.</p>
+        <h2>Capítulo 1: O que são Mock Data?</h2>
+        <p>Neste capítulo, exploramos a definição de mock data, por que são essenciais para o desenvolvimento de software moderno, e as diferenças entre mock data, dados de teste e dados reais.</p>
+        <h2>Conclusão</h2>
+        <p>Agora você está equipado com o conhecimento para acelerar seu desenvolvimento, criar testes mais robustos e construir aplicações melhores com o poder dos mock data.</p>
+    </div>
+</body>
+</html>
+    `;
 };

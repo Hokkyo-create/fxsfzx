@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useMemo } from 'react';
 import type { User, Project, ProjectGenerationConfig } from '../types';
 import Icon from './Icons';
@@ -8,6 +5,7 @@ import Section from './Section';
 import ProjectCard from './ProjectCard';
 import CreateProjectModal from './CreateProjectModal';
 import ProjectGenerationPage from './ProjectGenerationPage';
+import GammaModeModal from './GammaModeModal';
 import { createProject } from '../services/firebaseService';
 
 interface ProjectsPageProps {
@@ -16,10 +14,12 @@ interface ProjectsPageProps {
     onBack: () => void;
     onViewProject: (project: Project) => void;
     onProjectCreated: () => void; // To refresh project list in App.tsx
+    onNavigate: (page: 'notebook-lm') => void;
 }
 
-const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onViewProject, onProjectCreated }) => {
+const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onViewProject, onProjectCreated, onNavigate }) => {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isGammaModalOpen, setIsGammaModalOpen] = useState(false);
     const [generationConfig, setGenerationConfig] = useState<ProjectGenerationConfig | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -80,10 +80,20 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onV
                                     </div>
                                 </div>
                             </div>
-                            <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition-transform transform hover:scale-105">
-                                <Icon name="Plus" className="w-5 h-5" />
-                                <span>Novo Projeto</span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => onNavigate('notebook-lm')} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-2 sm:px-4 rounded-md transition-colors" title="Modo Notebook LM">
+                                    <Icon name="Pencil" className="w-5 h-5" />
+                                    <span className="hidden sm:inline">Notebook LM</span>
+                                </button>
+                                <button onClick={() => setIsGammaModalOpen(true)} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-2 sm:px-4 rounded-md transition-colors" title="Modo Gamma">
+                                    <Icon name="Sparkles" className="w-5 h-5" />
+                                    <span className="hidden sm:inline">Modo Gamma</span>
+                                </button>
+                                <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-2 px-2 sm:px-4 rounded-md transition-transform transform hover:scale-105">
+                                    <Icon name="Plus" className="w-5 h-5" />
+                                    <span className="hidden sm:inline">Novo Projeto</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -141,6 +151,11 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onV
                 onClose={() => setIsCreateModalOpen(false)}
                 user={user}
                 onStartGeneration={handleStartGeneration}
+            />
+            <GammaModeModal
+                isOpen={isGammaModalOpen}
+                onClose={() => setIsGammaModalOpen(false)}
+                projects={ownedProjects}
             />
         </>
     );

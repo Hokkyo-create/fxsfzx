@@ -148,3 +148,8 @@ export interface RadioState {
   track_progress_on_seek: number; // track's currentTime at the time of the state change
   updated_by: string; // user who made the change
 }
+export interface Slide {
+  title: string;
+  content: string[]; // Bullet points
+  imagePrompt: string; // Prompt for the slide's background image
+}

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, GenerateContentResponse, Modality } from "@google/genai";
-import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript, IconName } from "../types";
+import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript, IconName, Slide } from "../types";
 // Fix: Use a namespace import to correctly reference the exported functions from the mock service.
 import * as mockService from './geminiServiceMocks';
 
@@ -713,6 +713,45 @@ export const generateTtsAudio = async (text: string): Promise<string> => {
     } catch (error) {
         // Mock service for TTS is not defined, so just re-throw
         console.error("TTS generation failed:", error);
+        throw error;
+    }
+};
+
+
+export const generatePresentationFromProject = async (project: Project): Promise<Slide[]> => {
+    try {
+        const response = await handleApiCall<GenerateContentResponse>(() => {
+            const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}\nConclusão: ${project.conclusion}`;
+            return ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `Crie uma apresentação de slides concisa e visualmente impactante baseada no conteúdo do ebook a seguir. Gere um total de 10 slides. Para cada slide, forneça um título, 2-4 pontos de conteúdo (content) em formato de array de strings, e um 'imagePrompt' criativo em inglês para gerar uma imagem de fundo relevante. \n\nEBOOK:\n${content.substring(0, 8000)}`,
+                config: { responseMimeType: "application/json", responseSchema: mockService.presentationSchema }
+            });
+        }, 'generatePresentationFromProject');
+        return JSON.parse(response.text);
+    } catch (error) {
+        if (error instanceof QuotaExceededError) {
+            return mockService.getMockPresentation();
+        }
+        throw error;
+    }
+};
+
+export const generateWebpageFromProject = async (project: Project): Promise<string> => {
+    try {
+        const response = await handleApiCall<GenerateContentResponse>(() => {
+            const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}\nConclusão: ${project.conclusion}`;
+            return ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `Crie o código HTML completo para uma página web de uma única página (single-page) baseada no conteúdo do ebook a seguir. O resultado deve ser um único arquivo HTML. Use CSS inline ou em uma tag <style> para estilização. O design deve ser moderno, responsivo e com um tema escuro (dark theme) que combine com a estética ARC7HIVE (preto, cinza escuro, com destaques em vermelho #E50914). Não inclua JavaScript. Retorne apenas o código HTML, começando com <!DOCTYPE html>. \n\nEBOOK:\n${content.substring(0, 8000)}`,
+                config: { systemInstruction: "Você é um desenvolvedor front-end especialista que cria páginas web elegantes e bem estruturadas a partir de conteúdo textual." }
+            });
+        }, 'generateWebpageFromProject');
+        return response.text.replace(/```html\n?|```/g, '').trim();
+    } catch (error) {
+        if (error instanceof QuotaExceededError) {
+            return mockService.getMockWebpage();
+        }
         throw error;
     }
 };

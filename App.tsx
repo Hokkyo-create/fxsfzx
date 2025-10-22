@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import type { User, LearningCategory, NextVideoInfo, Video, Project, MeetingMessage, OnlineUser, Notification, Song } from './types';
 import { categories as initialCategories, users } from './data';
@@ -12,6 +13,7 @@ import MeetingPage from './components/Header';
 import VideoPlayerPage from './components/VideoPlayerPage';
 import ProjectsPage from './components/ProjectsPage';
 import ProjectViewerPage from './components/ProjectViewerPage';
+import NotebookLMPage from './components/NotebookLMPage';
 
 // --- UI Components & Modals ---
 import AdminPanel from './components/AdminPanel';
@@ -29,7 +31,7 @@ const App: React.FC = () => {
     // --- App State ---
     const [appState, setAppState] = useState<'login' | 'welcome' | 'dashboard'>('login');
     const [user, setUser] = useState<User | null>(null);
-    const [page, setPage] = useState<'dashboard' | 'videos' | 'projects' | 'meeting' | 'project-viewer'>('dashboard');
+    const [page, setPage] = useState<'dashboard' | 'videos' | 'projects' | 'meeting' | 'project-viewer' | 'notebook-lm'>('dashboard');
     const [pageData, setPageData] = useState<any>(null);
 
     // --- Data State ---
@@ -146,7 +148,7 @@ const App: React.FC = () => {
         localStorage.removeItem('arc7hive_user');
     };
 
-    const handleNavigate = (targetPage: 'videos' | 'projects' | 'meeting' | 'project-viewer', data?: any) => {
+    const handleNavigate = (targetPage: 'videos' | 'projects' | 'meeting' | 'project-viewer' | 'notebook-lm', data?: any) => {
         setPage(targetPage);
         setPageData(data);
     };
@@ -273,6 +275,7 @@ const App: React.FC = () => {
                             projects={projects} 
                             onBack={() => setPage('dashboard')} 
                             onViewProject={(project) => handleNavigate('project-viewer', project)}
+                            onNavigate={handleNavigate}
                             onProjectCreated={() => { /* Listener handles update */}}
                         />;
             case 'project-viewer':
@@ -294,6 +297,8 @@ const App: React.FC = () => {
                             onTypingChange={(isTyping) => firebaseService.updateTypingStatus(user.name, isTyping)}
                             onBack={() => setPage('dashboard')}
                         />;
+            case 'notebook-lm':
+                return <NotebookLMPage onBack={() => setPage('projects')} />;
             case 'dashboard':
             default:
                 return <DashboardPage 
