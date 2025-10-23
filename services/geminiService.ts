@@ -287,6 +287,89 @@ async function searchMusicFromProviders(searchQuery: string): Promise<YouTubeTra
     throw new Error('Todos os provedores de busca de música falharam.');
 }
 
+// --- Playlist Search Providers ---
+
+interface PlaylistSearchProvider {
+    name: string;
+    searchUrl: (query: string) => string;
+    parseResponse: (data: any) => YouTubePlaylist[];
+}
+
+const parseInvidiousPlaylistSearchResponse = (data: any): YouTubePlaylist[] => {
+    if (!Array.isArray(data)) return [];
+    return data
+        .map((item: any): Partial<YouTubePlaylist> => {
+            if (item.type !== 'playlist' || !item.playlistId || !item.title) return {};
+            
+            const firstVideoThumbnail = item.videos?.[0]?.videoThumbnails?.find((t: any) => t.quality === 'hqdefault')?.url;
+            
+            return {
+                id: item.playlistId,
+                title: item.title,
+                thumbnailUrl: firstVideoThumbnail || `https://i.ytimg.com/vi/${item.videos?.[0]?.videoId}/hqdefault.jpg`,
+                videoCount: item.videoCount,
+                uploaderName: item.author,
+            };
+        })
+        .filter((playlist): playlist is YouTubePlaylist => !!playlist.id && !!playlist.title && !!playlist.thumbnailUrl);
+};
+
+const parsePipedPlaylistSearchResponse = (data: any): YouTubePlaylist[] => {
+    if (!data.items || !Array.isArray(data.items)) return [];
+    return data.items
+        .map((item: any): Partial<YouTubePlaylist> => {
+            if (item.type !== 'playlist' || !item.url || !item.name) return {};
+            const playlistIdMatch = item.url.match(/list=([^&]+)/);
+            if (!playlistIdMatch || !playlistIdMatch[1]) return {};
+            
+            return {
+                id: playlistIdMatch[1],
+                title: item.name,
+                thumbnailUrl: item.thumbnail,
+                videoCount: item.videos,
+                uploaderName: item.uploaderName,
+            };
+        })
+        .filter((playlist): playlist is YouTubePlaylist => !!playlist.id && !!playlist.title && !!playlist.thumbnailUrl);
+};
+
+const playlistSearchProviders: PlaylistSearchProvider[] = [
+    ...invidiousApiInstances.map(instance => ({
+        name: `Invidious Playlist Search (${new URL(instance).hostname})`,
+        searchUrl: (query: string) => `${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=playlist&region=BR`,
+        parseResponse: parseInvidiousPlaylistSearchResponse
+    })),
+    ...pipedApiInstances.map(instance => ({
+        name: `Piped Playlist Search (${new URL(instance).hostname})`,
+        searchUrl: (query: string) => `${instance}/search?q=${encodeURIComponent(query)}&filter=playlists`,
+        parseResponse: parsePipedPlaylistSearchResponse
+    }))
+];
+
+async function searchPlaylistsFromProviders(searchQuery: string): Promise<YouTubePlaylist[]> {
+    const shuffledProviders = shuffleArray(playlistSearchProviders);
+
+    for (const provider of shuffledProviders) {
+        console.log(`Attempting playlist search with: ${provider.name}`);
+        try {
+            const response = await fetchWithTimeout(provider.searchUrl(searchQuery));
+            if (!response.ok) throw new Error(`Response not OK: ${response.status}`);
+            
+            const data = await response.json();
+            const playlists = provider.parseResponse(data);
+
+            if (playlists.length > 0) {
+                console.log(`Found ${playlists.length} playlists with ${provider.name}`);
+                return playlists;
+            }
+        } catch (e) {
+            console.error(`Provider ${provider.name} failed:`, e);
+        }
+    }
+    throw new Error('Todos os provedores de busca de playlist falharam.');
+}
+
+
 // --- Playlist Fetching Providers ---
 
 const playlistIdRegex = /(?:list=)([\w-]+)/;
@@ -377,20 +460,15 @@ async function getVideosFromPlaylistProviders(playlistId: string, existingVideoI
 // --- Main Exported Service Functions ---
 
 export const searchYouTubePlaylists = async (categoryTitle: string): Promise<YouTubePlaylist[]> => {
+    const searchQuery = `${categoryTitle} tutorial playlist`;
     try {
-        const response = await fetch(`/api/sugerir_playlists?categoria=${encodeURIComponent(categoryTitle)}`);
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || `Falha na busca de playlists: ${response.statusText}`);
-        }
-        const playlists: YouTubePlaylist[] = await response.json();
-        return playlists;
+        return await searchPlaylistsFromProviders(searchQuery);
     } catch (error) {
-        console.error("Ocorreu um erro ao buscar playlists da API Vercel:", error);
+        console.error("An unexpected error occurred during the playlist search:", error);
         if (error instanceof Error) {
             throw new Error(`Busca de playlists indisponível: ${error.message}`);
         }
-        throw new Error("Falha ao se comunicar com o serviço de sugestão de playlists.");
+        throw new Error("Falha ao se comunicar com os serviços de busca de playlists.");
     }
 };
 
