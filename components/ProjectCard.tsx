@@ -4,6 +4,7 @@ import React from 'react';
 import type { Project } from '../types';
 import Icon from './Icons';
 import Avatar from './Avatar';
+import { users } from '../data';
 
 interface ProjectCardProps {
     project: Project;
@@ -13,6 +14,7 @@ interface ProjectCardProps {
 
 const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick, style }) => {
     const creationDate = new Date(project.created_at).toLocaleDateString('pt-BR');
+    const avatarUrl = project.avatarUrl || users.find(u => u.name === project.createdBy)?.avatarUrl || '';
 
     return (
         <div
@@ -34,7 +36,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick, style }) =>
                 <h3 className="text-lg font-bold text-white leading-tight flex-grow line-clamp-2">{project.name}</h3>
                 <div className="flex items-center justify-between mt-4">
                     <div className="flex items-center gap-2">
-                        <Avatar src={project.avatarUrl} name={project.createdBy} size="sm" />
+                        <Avatar src={avatarUrl} name={project.createdBy} size="sm" />
                         <span className="text-xs text-gray-400">{project.createdBy}</span>
                     </div>
                     <span className="text-xs text-gray-500">{creationDate}</span>

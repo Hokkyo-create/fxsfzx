@@ -54,7 +54,7 @@ export interface Project {
     chapters: Chapter[];
     conclusion: string;
     createdBy: string;
-    avatarUrl: string;
+    avatarUrl?: string; // Optional to match database schema
     created_at: string; // Changed from number to string for Supabase ISO timestamp
     coverImageUrl?: string; // URL for the AI-generated cover image
     // --- New Fields for Collaboration & Monetization ---

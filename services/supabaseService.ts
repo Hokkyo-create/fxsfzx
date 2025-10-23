@@ -12,10 +12,22 @@ const RADIO_STATE_ID = 1;
 
 const MEETING_ROOM_CHANNEL = 'meeting-room';
 
-export const formatSupabaseError = (error: PostgrestError | null, context: string): string => {
+export const formatSupabaseError = (error: PostgrestError | Error | null, context: string): string => {
     if (!error) return `An unknown error occurred in ${context}.`;
     console.error(`Supabase Error in ${context}:`, error);
-    return `${error.message} (Code: ${error.code})`;
+
+    // Check if it's a PostgrestError (has 'code' property)
+    if ('code' in error && typeof (error as PostgrestError).code === 'string') {
+        const pgError = error as PostgrestError;
+        return `${pgError.message} (Code: ${pgError.code})`;
+    }
+    
+    // Fallback for standard Error or other objects with a message
+    if (error.message) {
+        return error.message;
+    }
+    
+    return `An unknown error occurred in ${context}. Check console for details.`;
 };
 
 // --- Project Actions ---
@@ -24,12 +36,22 @@ export const setupProjectsListener = (
     callback: (projects: Project[]) => void, 
     onError: (error: PostgrestError) => void
 ) => {
+    const handleData = (data: any[] | null) => {
+        if (data) {
+            const projects: Project[] = data.map(p => {
+                const { content, ...rest } = p;
+                return { ...rest, chapters: content || [] }; // Map 'content' DB column to 'chapters' app property
+            });
+            callback(projects);
+        }
+    };
+
     const channel = supabase
         .channel('public:projects')
         .on<Project>('postgres_changes', { event: '*', schema: 'public', table: PROJECTS_TABLE }, async () => {
              const { data, error } = await supabase.from(PROJECTS_TABLE).select('*').order('created_at', { ascending: false });
             if (error) onError(error);
-            else if (data) callback(data);
+            else handleData(data);
         })
         .subscribe();
         
@@ -37,7 +59,7 @@ export const setupProjectsListener = (
     (async () => {
         const { data, error } = await supabase.from(PROJECTS_TABLE).select('*').order('created_at', { ascending: false });
         if (error) onError(error);
-        else if (data) callback(data);
+        else handleData(data);
     })();
 
     return () => {
@@ -47,19 +69,34 @@ export const setupProjectsListener = (
 
 
 export const createProject = async (projectData: Omit<Project, 'id' | 'created_at'>): Promise<Project> => {
+    // Map 'chapters' to 'content' for DB insertion, and remove 'avatarUrl'.
+    const { avatarUrl, chapters, ...restOfProjectData } = projectData;
+    const insertData = { ...restOfProjectData, content: chapters };
+    
     const { data, error } = await supabase
         .from(PROJECTS_TABLE)
-        .insert([{ ...projectData, createdBy: projectData.createdBy, avatarUrl: projectData.avatarUrl }])
+        .insert([insertData])
         .select()
         .single();
     if (error) throw new Error(formatSupabaseError(error, 'createProject'));
-    return data as Project;
+
+    // Map 'content' back to 'chapters' for the app.
+    const { content, ...rest } = data;
+    return { ...rest, chapters: content || [] } as Project;
 };
 
 export const updateProject = async (projectId: string, updates: Partial<Project>) => {
+    const { chapters, ...restOfUpdates } = updates;
+    const updateData: { [key: string]: any } = { ...restOfUpdates };
+
+    // If 'chapters' is being updated, map it to the 'content' column.
+    if (chapters) {
+        updateData.content = chapters;
+    }
+    
     const { error } = await supabase
         .from(PROJECTS_TABLE)
-        .update(updates)
+        .update(updateData)
         .eq('id', projectId);
     
     if (error) {
@@ -71,17 +108,20 @@ export const updateProject = async (projectId: string, updates: Partial<Project>
 // --- Meeting Chat & Presence ---
 
 export const setupMessagesListener = (
-    // Fix: Correctly type the callback as a React state setter, which can accept a value or an updater function.
     callback: (value: MeetingMessage[] | ((prevState: MeetingMessage[]) => MeetingMessage[])) => void, 
-    onError: (error: PostgrestError) => void
+    onError: (error: PostgrestError | Error) => void
 ) => {
     const channel = supabase
         .channel('public:meeting_messages')
         .on<MeetingMessage>('postgres_changes', { event: 'INSERT', schema: 'public', table: MEETING_CHAT_TABLE }, payload => {
-            // Fix: Use the functional update form of the state setter to correctly append the new message.
             callback((prev: MeetingMessage[]) => [...prev, payload.new as MeetingMessage]);
         })
-        .subscribe();
+        .subscribe((status, err) => {
+            if (err) {
+                console.error("Subscription error in messages listener:", err);
+                onError(err);
+            }
+        });
 
     // Initial fetch
     (async () => {

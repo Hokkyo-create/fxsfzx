@@ -2,6 +2,7 @@
 
 
 
+
 import React, { useState, useRef, useCallback } from 'react';
 import type { Project, Chapter, IconName } from '../types';
 import { users } from '../data';
@@ -32,6 +33,7 @@ const SettingsSidebar: React.FC<{ project: Project; onUpdateProject: ProjectView
     const [selectedUser, setSelectedUser] = useState('');
 
     const availableUsers = users.filter(u => u.name !== project.createdBy && !collaborators.includes(u.name));
+    const ownerAvatarUrl = project.avatarUrl || users.find(u => u.name === project.createdBy)?.avatarUrl || '';
     
     // Sync with project prop changes
     React.useEffect(() => {
@@ -75,7 +77,7 @@ const SettingsSidebar: React.FC<{ project: Project; onUpdateProject: ProjectView
                     <h3 className="font-display tracking-wider text-white text-lg mb-3">Colaboradores</h3>
                     <div className="space-y-2">
                         <div className="flex items-center gap-2 text-sm">
-                            <Avatar src={project.avatarUrl} name={project.createdBy} size="sm" />
+                            <Avatar src={ownerAvatarUrl} name={project.createdBy} size="sm" />
                             <span className="font-semibold">{project.createdBy}</span>
                             <span className="text-xs bg-brand-red/50 text-white px-2 py-0.5 rounded-full">Dono</span>
                         </div>
