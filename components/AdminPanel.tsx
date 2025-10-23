@@ -4,8 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Icon from './Icons';
 import type { Song } from '../types';
 import { generateLiveStyles } from '../services/geminiService';
-import { uploadSong, setupPlaylistListener, deleteSong, formatSupabaseError } from '../services/supabaseService';
-import { clearMeetingChat } from '../services/firebaseService';
+import { uploadSong, setupPlaylistListener, deleteSong, formatSupabaseError, clearMeetingChat } from '../services/supabaseService';
+
 
 interface AdminPanelProps {
     isOpen: boolean;
@@ -82,8 +82,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     const handleClearChat = async () => {
         if (window.confirm("Você tem certeza que deseja apagar TODAS as mensagens do chat da reunião? Esta ação é irreversível.")) {
             try {
-                // This function is in supabaseService, but the original implementation was in Firebase.
-                // Assuming the supabase one is now the source of truth.
                 await clearMeetingChat();
                 setMessage('O histórico do chat da reunião foi limpo com sucesso!');
                 setTimeout(() => setMessage(''), 3000);

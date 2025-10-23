@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import type { Project } from '../types';
 import Icon from './Icons';
@@ -11,7 +12,7 @@ interface ProjectCardProps {
 }
 
 const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick, style }) => {
-    const creationDate = new Date(project.createdAt).toLocaleDateString('pt-BR');
+    const creationDate = new Date(project.created_at).toLocaleDateString('pt-BR');
 
     return (
         <div

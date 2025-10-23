@@ -55,7 +55,7 @@ export interface Project {
     conclusion: string;
     createdBy: string;
     avatarUrl: string;
-    createdAt: number;
+    created_at: string; // Changed from number to string for Supabase ISO timestamp
     coverImageUrl?: string; // URL for the AI-generated cover image
     // --- New Fields for Collaboration & Monetization ---
     collaborators?: string[]; // Array of user names
@@ -113,11 +113,11 @@ export interface ChatMessage {
 }
 
 export interface MeetingMessage {
-    id:string;
+    id: number; // Changed from string to number for Supabase primary key
     user: string;
     text: string;
-    timestamp: string;
-    avatarUrl: string; // Added for profile pictures
+    created_at: string; // Changed from timestamp: string for Supabase ISO timestamp
+    avatarUrl: string; 
 }
 
 export interface Song {

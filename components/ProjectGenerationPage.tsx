@@ -6,7 +6,7 @@ import Icon from './Icons';
 interface ProjectGenerationPageProps {
     user: User;
     config: ProjectGenerationConfig;
-    onGenerationComplete: (newProject: Omit<Project, 'id' | 'createdAt'>) => void;
+    onGenerationComplete: (newProject: Omit<Project, 'id' | 'created_at'>) => void;
     onCancel: () => void;
 }
 
@@ -54,7 +54,7 @@ const ProjectGenerationPage: React.FC<ProjectGenerationPageProps> = ({ user, con
                     throw new Error("A IA não conseguiu estruturar o conteúdo em capítulos. Tente novamente com um tópico mais claro.");
                 }
 
-                const newProjectData: Omit<Project, 'id' | 'createdAt'> = {
+                const newProjectData: Omit<Project, 'id' | 'created_at'> = {
                     name: title,
                     introduction,
                     chapters,

@@ -1,7 +1,7 @@
 // supabase/functions/daily-video-importer/index.ts
 
-// Fix: Add a reference to Deno's edge runtime types to resolve 'Cannot find name Deno' errors.
-/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
+// Fix: Declare the Deno global to resolve type errors in environments where the reference directive fails.
+declare const Deno: any;
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'

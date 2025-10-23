@@ -1,14 +1,16 @@
 // Fix: Provide the full implementation for the Supabase service.
 import { supabase } from '../supabaseClient';
-import type { PostgrestError } from '@supabase/supabase-js';
-import type { Project, Song, RadioState, Video, LearningCategory } from '../types';
+import type { PostgrestError, RealtimeChannel } from '@supabase/supabase-js';
+import type { Project, Song, RadioState, Video, LearningCategory, MeetingMessage, User, OnlineUser } from '../types';
 
 const MUSIC_TABLE = 'music_playlist';
 const PROJECTS_TABLE = 'projects';
 const MEETING_CHAT_TABLE = 'meeting_messages';
 const RADIO_STATE_TABLE = 'radio_state';
-const LEARNING_PLAYLISTS_TABLE = 'learning_videos'; // Corrected table name
-const RADIO_STATE_ID = 1; // Assuming a single radio state row
+const LEARNING_PLAYLISTS_TABLE = 'learning_videos';
+const RADIO_STATE_ID = 1;
+
+const MEETING_ROOM_CHANNEL = 'meeting-room';
 
 export const formatSupabaseError = (error: PostgrestError | null, context: string): string => {
     if (!error) return `An unknown error occurred in ${context}.`;
@@ -18,7 +20,33 @@ export const formatSupabaseError = (error: PostgrestError | null, context: strin
 
 // --- Project Actions ---
 
-export const createProject = async (projectData: Omit<Project, 'id' | 'createdAt'>): Promise<Project> => {
+export const setupProjectsListener = (
+    callback: (projects: Project[]) => void, 
+    onError: (error: PostgrestError) => void
+) => {
+    const channel = supabase
+        .channel('public:projects')
+        .on<Project>('postgres_changes', { event: '*', schema: 'public', table: PROJECTS_TABLE }, async () => {
+             const { data, error } = await supabase.from(PROJECTS_TABLE).select('*').order('created_at', { ascending: false });
+            if (error) onError(error);
+            else if (data) callback(data);
+        })
+        .subscribe();
+        
+    // Initial fetch
+    (async () => {
+        const { data, error } = await supabase.from(PROJECTS_TABLE).select('*').order('created_at', { ascending: false });
+        if (error) onError(error);
+        else if (data) callback(data);
+    })();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+};
+
+
+export const createProject = async (projectData: Omit<Project, 'id' | 'created_at'>): Promise<Project> => {
     const { data, error } = await supabase
         .from(PROJECTS_TABLE)
         .insert([{ ...projectData, createdBy: projectData.createdBy, avatarUrl: projectData.avatarUrl }])
@@ -28,13 +56,91 @@ export const createProject = async (projectData: Omit<Project, 'id' | 'createdAt
     return data as Project;
 };
 
-// --- Meeting Chat ---
+export const updateProject = async (projectId: string, updates: Partial<Project>) => {
+    const { error } = await supabase
+        .from(PROJECTS_TABLE)
+        .update(updates)
+        .eq('id', projectId);
+    
+    if (error) {
+        console.error(formatSupabaseError(error, 'updateProject'));
+    }
+};
+
+
+// --- Meeting Chat & Presence ---
+
+export const setupMessagesListener = (
+    // Fix: Correctly type the callback as a React state setter, which can accept a value or an updater function.
+    callback: (value: MeetingMessage[] | ((prevState: MeetingMessage[]) => MeetingMessage[])) => void, 
+    onError: (error: PostgrestError) => void
+) => {
+    const channel = supabase
+        .channel('public:meeting_messages')
+        .on<MeetingMessage>('postgres_changes', { event: 'INSERT', schema: 'public', table: MEETING_CHAT_TABLE }, payload => {
+            // Fix: Use the functional update form of the state setter to correctly append the new message.
+            callback((prev: MeetingMessage[]) => [...prev, payload.new as MeetingMessage]);
+        })
+        .subscribe();
+
+    // Initial fetch
+    (async () => {
+        const { data, error } = await supabase.from(MEETING_CHAT_TABLE).select('*').order('created_at', { ascending: true });
+        if (error) onError(error);
+        else if(data) callback(data);
+    })();
+    
+    return () => {
+        supabase.removeChannel(channel);
+    };
+};
+
+export const sendMessage = async (user: string, text: string, avatarUrl: string) => {
+    const { error } = await supabase
+        .from(MEETING_CHAT_TABLE)
+        .insert({ user, text, avatarUrl });
+
+    if (error) console.error(formatSupabaseError(error, 'sendMessage'));
+};
+
 export const clearMeetingChat = async () => {
     const { error } = await supabase
         .from(MEETING_CHAT_TABLE)
         .delete()
         .gt('id', 0); // Deletes all rows
     if (error) throw new Error(formatSupabaseError(error, 'clearMeetingChat'));
+};
+
+export const initializeMeetingPresence = (user: User, onPresenceChange: (newState: any) => void): RealtimeChannel => {
+    const channel = supabase.channel(MEETING_ROOM_CHANNEL, {
+        config: {
+            presence: {
+                key: user.name,
+            },
+        },
+    });
+
+    channel
+        .on('presence', { event: 'sync' }, () => {
+            const presenceState = channel.presenceState();
+            onPresenceChange(presenceState);
+        })
+        .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await channel.track({ user: user.name, avatarUrl: user.avatarUrl, is_typing: false });
+            }
+        });
+
+    return channel;
+};
+
+export const updateMeetingPresence = (channel: RealtimeChannel, isTyping: boolean) => {
+    const user = (channel.presenceState()[channel.presenceKey()] as any)[0];
+    channel.track({ ...user, is_typing: isTyping });
+};
+
+export const leaveMeetingPresence = (channel: RealtimeChannel) => {
+    supabase.removeChannel(channel);
 };
 
 // --- Learning Playlists ---
@@ -81,11 +187,6 @@ export const getLearningPlaylists = async (): Promise<Record<string, Video[]> | 
 
 
 export const saveLearningPlaylists = async (playlists: Record<string, Video[]>) => {
-    // This function synchronizes the database with the provided playlist state.
-    // It uses a "delete and replace" strategy for simplicity, which is effective
-    // but could be optimized for very large playlists in the future.
-
-    // First, flatten the new playlist state into a format suitable for insertion.
     const rowsToInsert = Object.entries(playlists).flatMap(([categoryId, videos]) =>
         videos.map(video => ({
             category_id: categoryId,
@@ -97,26 +198,21 @@ export const saveLearningPlaylists = async (playlists: Record<string, Video[]>) 
         }))
     );
 
-    // To ensure consistency, we first delete all existing videos.
-    // This handles additions, removals, and re-ordering in one go.
     const { error: deleteError } = await supabase
         .from(LEARNING_PLAYLISTS_TABLE)
         .delete()
-        .neq('id', `a-value-that-is-never-present-${Date.now()}`); // .delete() requires a filter.
+        .neq('id', `a-value-that-is-never-present-${Date.now()}`); 
 
     if (deleteError) {
         throw new Error(formatSupabaseError(deleteError, 'saveLearningPlaylists (delete step)'));
     }
 
-    // If there are any videos to save, insert them all.
     if (rowsToInsert.length > 0) {
         const { error: insertError } = await supabase
             .from(LEARNING_PLAYLISTS_TABLE)
             .insert(rowsToInsert);
 
         if (insertError) {
-            // This could leave the database empty if deletion succeeded but insertion failed.
-            // For a production app, a transaction or RPC function would be safer.
             throw new Error(formatSupabaseError(insertError, 'saveLearningPlaylists (insert step)'));
         }
     }
@@ -154,15 +250,12 @@ export const uploadSong = async (file: File, title: string, artist: string): Pro
 
     const storagePath = `music/${Date.now()}_${file.name}`;
 
-    // 1. Upload the file to Storage
     const { error: uploadError } = await supabase.storage.from('music').upload(storagePath, file);
     if (uploadError) throw new Error(uploadError.message);
     
-    // 2. Get public URL
     const { data: urlData } = supabase.storage.from('music').getPublicUrl(storagePath);
     if (!urlData) throw new Error("Could not get public URL for the song.");
     
-    // 3. Save metadata to the database
     const { error: insertError } = await supabase
         .from(MUSIC_TABLE)
         .insert({
@@ -176,11 +269,9 @@ export const uploadSong = async (file: File, title: string, artist: string): Pro
 };
 
 export const deleteSong = async (song: Song): Promise<void> => {
-    // 1. Delete from Storage
     const { error: storageError } = await supabase.storage.from('music').remove([song.storagePath]);
-    if (storageError) console.error("Supabase storage error on delete:", storageError.message); // Log but don't throw, to allow DB deletion
+    if (storageError) console.error("Supabase storage error on delete:", storageError.message);
 
-    // 2. Delete from Database
     const { error: dbError } = await supabase
         .from(MUSIC_TABLE)
         .delete()
@@ -197,7 +288,6 @@ export const setupRadioStateListener = (callback: (state: RadioState | null, err
         })
         .subscribe();
 
-    // Initial fetch
     (async () => {
         const { data, error } = await supabase
             .from(RADIO_STATE_TABLE)

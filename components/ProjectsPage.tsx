@@ -6,7 +6,7 @@ import ProjectCard from './ProjectCard';
 import CreateProjectModal from './CreateProjectModal';
 import ProjectGenerationPage from './ProjectGenerationPage';
 import GammaModeModal from './GammaModeModal';
-import { createProject } from '../services/firebaseService';
+import { createProject } from '../services/supabaseService';
 
 interface ProjectsPageProps {
     user: User;
@@ -28,10 +28,10 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ user, projects, onBack, onV
         setGenerationConfig(config);
     };
 
-    const handleGenerationComplete = async (newProjectData: Omit<Project, 'id' | 'createdAt'>) => {
+    const handleGenerationComplete = async (newProjectData: Omit<Project, 'id' | 'created_at'>) => {
         try {
             await createProject(newProjectData);
-            onProjectCreated(); // Notify App.tsx to refetch projects
+            onProjectCreated(); // Listener in App.tsx will pick up the change
             setGenerationConfig(null);
              window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Projeto criado com sucesso!' }}));
         } catch (error) {

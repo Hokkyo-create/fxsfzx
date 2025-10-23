@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { User, LearningCategory, NextVideoInfo, Video, Project, MeetingMessage, OnlineUser, Notification, Song } from './types';
 import { categories as initialCategories, users } from './data';
 
@@ -23,8 +23,8 @@ import Chatbot from './components/Chatbot';
 import NotificationBanner from './components/NotificationBanner';
 
 // --- Services ---
-import * as firebaseService from './services/firebaseService';
 import * as supabaseService from './services/supabaseService';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 
 const App: React.FC = () => {
@@ -46,12 +46,14 @@ const App: React.FC = () => {
     const [nowPlaying, setNowPlaying] = useState<{ title: string; artist: string } | null>(null);
     const [musicError, setMusicError] = useState<string | null>(null);
 
-
     // --- UI Modals & Popups State ---
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
     const [isMusicPlayerOpen, setIsMusicPlayerOpen] = useState(false);
     const [notification, setNotification] = useState<Notification | null>(null);
+
+    // --- Supabase Channel Refs ---
+    const presenceChannelRef = useRef<RealtimeChannel | null>(null);
 
     // --- Effects ---
 
@@ -79,7 +81,7 @@ const App: React.FC = () => {
         }
     }, []);
 
-    // Firebase/Supabase Listeners and data fetching that depends on the user
+    // Supabase Listeners and data fetching that depends on the user
     useEffect(() => {
         if (!user) return;
         
@@ -98,25 +100,45 @@ const App: React.FC = () => {
 
         loadPlaylists();
 
-        const unsubMessages = firebaseService.setupMessagesListener(setMeetingMessages);
-        const unsubTyping = firebaseService.setupTypingListener(users => setTypingUsers(new Set(users)));
-        const unsubOnline = firebaseService.setupOnlineStatusListener(setOnlineUsers);
-        const unsubProjects = firebaseService.setupProjectsListener(setProjects);
-        
+        // Setup listeners for all real-time data from Supabase
+        const unsubMessages = supabaseService.setupMessagesListener(setMeetingMessages, (err) => setMeetingError(supabaseService.formatSupabaseError(err, 'message listener')));
+        const unsubProjects = supabaseService.setupProjectsListener(setProjects, (err) => console.error(supabaseService.formatSupabaseError(err, 'project listener')));
         const unsubPlaylist = supabaseService.setupPlaylistListener((data, err) => {
             if (err) setMusicError(supabaseService.formatSupabaseError(err, 'playlist listener'));
             else setPlaylist(data);
         });
+        
+        // Setup unified presence (online status + typing)
+        if (presenceChannelRef.current) {
+            supabaseService.leaveMeetingPresence(presenceChannelRef.current);
+        }
+        presenceChannelRef.current = supabaseService.initializeMeetingPresence(user, (presenceState) => {
+            const currentOnlineUsers: OnlineUser[] = [];
+            const currentTypingUsers = new Set<string>();
+            
+            for (const id in presenceState) {
+                const presences = presenceState[id] as unknown as { user: string, avatarUrl: string, is_typing: boolean }[];
+                presences.forEach(p => {
+                    currentOnlineUsers.push({ name: p.user, avatarUrl: p.avatarUrl });
+                    if (p.is_typing) {
+                        currentTypingUsers.add(p.user);
+                    }
+                });
+            }
+            setOnlineUsers(currentOnlineUsers);
+            setTypingUsers(currentTypingUsers);
+        });
 
-        firebaseService.updateUserPresence(user.name, user.avatarUrl);
 
+        // Cleanup function
         return () => {
             unsubMessages();
-            unsubTyping();
-            unsubOnline();
             unsubProjects();
             unsubPlaylist();
-            firebaseService.goOffline(user.name);
+            if (presenceChannelRef.current) {
+                supabaseService.leaveMeetingPresence(presenceChannelRef.current);
+                presenceChannelRef.current = null;
+            }
         };
     }, [user]);
     
@@ -141,7 +163,10 @@ const App: React.FC = () => {
     };
 
     const handleLogout = () => {
-        if (user) firebaseService.goOffline(user.name);
+        if (presenceChannelRef.current) {
+            supabaseService.leaveMeetingPresence(presenceChannelRef.current);
+            presenceChannelRef.current = null;
+        }
         setUser(null);
         setAppState('login');
         setPage('dashboard');
@@ -221,7 +246,7 @@ const App: React.FC = () => {
     };
     
     const handleUpdateProject = (projectId: string, updates: Partial<Project>) => {
-        firebaseService.updateProject(projectId, updates);
+        supabaseService.updateProject(projectId, updates);
         // The listener will handle the state update
     };
 
@@ -234,6 +259,12 @@ const App: React.FC = () => {
         }
     };
     
+    const handleTypingChange = (isTyping: boolean) => {
+        if (presenceChannelRef.current) {
+            supabaseService.updateMeetingPresence(presenceChannelRef.current, isTyping);
+        }
+    };
+
     // Calculate next video to watch
     const nextVideoInfo: NextVideoInfo | null = (() => {
         for (const category of categories) {
@@ -293,8 +324,8 @@ const App: React.FC = () => {
                             error={meetingError}
                             isAiActive={true} // Simplified for now
                             onToggleAi={() => {}} // Simplified for now
-                            onSendMessage={(text) => firebaseService.sendMessage(user.name, text, user.avatarUrl)}
-                            onTypingChange={(isTyping) => firebaseService.updateTypingStatus(user.name, isTyping)}
+                            onSendMessage={(text) => supabaseService.sendMessage(user.name, text, user.avatarUrl)}
+                            onTypingChange={handleTypingChange}
                             onBack={() => setPage('dashboard')}
                         />;
             case 'notebook-lm':
