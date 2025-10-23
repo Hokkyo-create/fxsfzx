@@ -10,19 +10,6 @@
     {
       "src": "/api/(.*)",
       "dest": "api/main.py"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/run-daily-update",
-      "schedule": "0 20 * * *"
     }
   ]
 }
