@@ -1,8 +1,8 @@
 // components/AddVideoModal.tsx
 import React, { useState, useMemo } from 'react';
-import type { Video, LearningCategory } from '../types';
+import type { Video, LearningCategory, YouTubePlaylist } from '../types';
 import Icon from './Icons';
-import { searchYouTubeVideos, getVideosFromPlaylistUrl, searchVideosByAI } from '../services/geminiService';
+import { searchYouTubeVideos, getVideosFromPlaylistUrl, searchVideosByAI, searchYouTubePlaylists } from '../services/geminiService';
 
 interface AddVideoModalProps {
     isOpen: boolean;
@@ -10,14 +10,16 @@ interface AddVideoModalProps {
     onAddVideos: (videos: Video[]) => void;
     existingVideoIds: Set<string>;
     allCategories: LearningCategory[];
+    categoryTitle: string;
 }
 
-const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVideos, existingVideoIds, allCategories }) => {
-    const [mode, setMode] = useState<'search' | 'playlist' | 'ai'>('search');
+const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVideos, existingVideoIds, allCategories, categoryTitle }) => {
+    const [mode, setMode] = useState<'search' | 'playlist' | 'ai' | 'ai-suggest'>('search');
     const [playlistUrl, setPlaylistUrl] = useState('');
     const [query, setQuery] = useState('');
     const [searchResults, setSearchResults] = useState<Video[]>([]);
     const [playlistResults, setPlaylistResults] = useState<Video[]>([]);
+    const [suggestions, setSuggestions] = useState<YouTubePlaylist[]>([]);
     const [selectedPlaylistVideos, setSelectedPlaylistVideos] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -31,6 +33,7 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
         setPlaylistUrl('');
         setSearchResults([]);
         setPlaylistResults([]);
+        setSuggestions([]);
         setSelectedPlaylistVideos(new Set());
         setIsLoading(false);
         setError('');
@@ -75,26 +78,53 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
             setIsLoading(false);
         }
     };
-
-    const handleImportPlaylist = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!playlistUrl.trim()) return;
-
+    
+    const importPlaylist = async (url: string) => {
         setIsLoading(true);
         setError('');
         setPlaylistResults([]);
         try {
-            const videos = await getVideosFromPlaylistUrl(playlistUrl, existingVideoIds);
+            const videos = await getVideosFromPlaylistUrl(url, existingVideoIds);
             setPlaylistResults(videos);
-            setSelectedPlaylistVideos(new Set(videos.map(v => v.id))); // Pre-select all new videos
+            setSelectedPlaylistVideos(new Set(videos.map(v => v.id)));
             if (videos.length === 0) {
-                 setError("Nenhum vídeo novo encontrado nesta playlist. Eles podem já estar na trilha ou a playlist está vazia/privada.");
+                setError("Nenhum vídeo novo encontrado nesta playlist. Eles podem já estar na trilha ou a playlist está vazia/privada.");
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Falha ao importar a playlist.');
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleImportPlaylistForm = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!playlistUrl.trim()) return;
+        importPlaylist(playlistUrl);
+    };
+
+    const handleSuggestPlaylists = async () => {
+        setIsLoading(true);
+        setError('');
+        setSuggestions([]);
+        try {
+            const results = await searchYouTubePlaylists(categoryTitle);
+            setSuggestions(results);
+            if (results.length === 0) {
+                setError("Nenhuma playlist encontrada para este tópico.");
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Falha ao buscar sugestões.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleSuggestionClick = (playlist: YouTubePlaylist) => {
+        const url = `https://www.youtube.com/playlist?list=${playlist.id}`;
+        setMode('playlist');
+        setPlaylistUrl(url);
+        importPlaylist(url);
     };
 
     const handleAddSingleVideo = (video: Video) => {
@@ -141,13 +171,15 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
                     </button>
                 </div>
                 
-                 <div className="flex-shrink-0 flex items-center p-1 rounded-lg bg-gray-900 mb-4">
-                    <button onClick={() => { setMode('search'); resetState(); }} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'search' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>Buscar no YouTube</button>
-                    <button onClick={() => { setMode('ai'); resetState(); }} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-2 ${mode === 'ai' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>
-                        <Icon name="Sparkles" className="w-4 h-4"/>
-                        Busca com IA
+                 <div className="flex-shrink-0 grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 rounded-lg bg-gray-900 mb-4">
+                    <button onClick={() => { setMode('search'); resetState(); }} className={`py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'search' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>Buscar</button>
+                    <button onClick={() => { setMode('ai-suggest'); resetState(); }} className={`py-1.5 text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-2 ${mode === 'ai-suggest' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>
+                        <Icon name="Brain" className="w-4 h-4"/> Sugerir
                     </button>
-                    <button onClick={() => { setMode('playlist'); resetState(); }} className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'playlist' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>Importar Playlist</button>
+                    <button onClick={() => { setMode('ai'); resetState(); }} className={`py-1.5 text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-2 ${mode === 'ai' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>
+                        <Icon name="Sparkles" className="w-4 h-4"/> Busca IA
+                    </button>
+                    <button onClick={() => { setMode('playlist'); resetState(); }} className={`py-1.5 text-sm font-semibold rounded-md transition-colors ${mode === 'playlist' ? 'text-white bg-brand-red' : 'text-gray-400 hover:bg-gray-800'}`}>Playlist</button>
                 </div>
 
                 {mode === 'search' ? (
@@ -226,9 +258,37 @@ const AddVideoModal: React.FC<AddVideoModalProps> = ({ isOpen, onClose, onAddVid
                              }) : !isLoading && !error && <p className="text-center text-gray-500 pt-8">Use a busca inteligente para encontrar vídeos relevantes em todas as trilhas de conhecimento.</p>}
                          </div>
                     </>
+                 ) : mode === 'ai-suggest' ? (
+                    <div className="flex-grow flex flex-col items-center justify-center">
+                        {isLoading ? (
+                             <svg className="animate-spin h-8 w-8 text-brand-red" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        ) : error ? (
+                            <p className="text-center text-red-400 p-4">{error}</p>
+                        ) : suggestions.length > 0 ? (
+                            <div className="w-full h-full overflow-y-auto pr-2 space-y-2">
+                                {suggestions.map(playlist => (
+                                    <div key={playlist.id} onClick={() => handleSuggestionClick(playlist)} className="flex items-center gap-4 p-2 rounded-lg bg-gray-800/50 hover:bg-gray-700 cursor-pointer transition-colors">
+                                        <img src={playlist.thumbnailUrl} alt={playlist.title} className="w-28 h-16 object-cover rounded flex-shrink-0"/>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-semibold text-white line-clamp-2">{playlist.title}</p>
+                                            <p className="text-xs text-gray-400">{playlist.uploaderName} • {playlist.videoCount} vídeos</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center">
+                                <p className="text-gray-400 mb-4">Encontre as melhores playlists para esta categoria com um clique.</p>
+                                <button onClick={handleSuggestPlaylists} className="flex items-center justify-center gap-2 bg-brand-red hover:bg-red-700 text-white font-bold py-3 px-6 rounded-md">
+                                    <Icon name="Brain" className="w-5 h-5"/>
+                                    Buscar sugestões para "{categoryTitle}"
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 ) : ( // Playlist mode
                      <>
-                        <form onSubmit={handleImportPlaylist} className="relative flex-shrink-0 flex gap-2">
+                        <form onSubmit={handleImportPlaylistForm} className="relative flex-shrink-0 flex gap-2">
                              <input
                                  type="url"
                                  value={playlistUrl}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Slide } from '../types';
 import Icon from './Icons';
+// Fix: Correctly import the `generateImage` function from the Gemini service.
 import { generateImage } from '../services/geminiService';
 import { downloadPresentationAsPdf } from '../utils/pdfGenerator';
 
@@ -23,7 +24,8 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slides, project
 
             setIsLoadingImage(true);
             try {
-                const base64 = await generateImage(currentSlide.imagePrompt);
+                // Fix: Specify the '16:9' aspect ratio for presentation slide backgrounds.
+                const base64 = await generateImage(currentSlide.imagePrompt, '16:9');
                 setImages(prev => ({ ...prev, [currentIndex]: `data:image/png;base64,${base64}` }));
             } catch (error) {
                 console.error("Failed to generate slide image:", error);
@@ -57,7 +59,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slides, project
 
             for (let i = 0; i < slides.length; i++) {
                 if (!allImages[i] || allImages[i] === 'error') {
-                    const promise = generateImage(slides[i].imagePrompt)
+                    const promise = generateImage(slides[i].imagePrompt, '16:9')
                         .then(base64 => {
                             allImages[i] = `data:image/png;base64,${base64}`;
                         })

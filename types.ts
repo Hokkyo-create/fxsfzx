@@ -135,6 +135,21 @@ export interface YouTubeTrack {
   thumbnailUrl: string;
 }
 
+export interface YouTubePlaylist {
+  id: string;
+  title: string;
+  thumbnailUrl: string;
+  videoCount: number;
+  uploaderName: string;
+}
+
+export interface YouTubeChannel {
+  id: string;
+  name: string;
+  thumbnailUrl: string;
+  description?: string;
+}
+
 export interface Notification {
     type: 'error' | 'info';
     message: string;

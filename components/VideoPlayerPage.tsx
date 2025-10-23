@@ -181,6 +181,7 @@ const VideoPlayerPage: React.FC<VideoPlayerPageProps> = ({
                 }}
                 existingVideoIds={new Set(category.videos.map(v => v.id))}
                 allCategories={allCategories}
+                categoryTitle={category.title}
             />
         </>
     );

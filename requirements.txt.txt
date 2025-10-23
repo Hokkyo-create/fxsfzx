@@ -1,3 +1,0 @@
-fastapi==0.100.0
-uvicorn==0.24.0
-youtubesearchpython==1.7.5

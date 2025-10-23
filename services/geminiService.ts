@@ -1,7 +1,9 @@
 import { GoogleGenAI, Type, GenerateContentResponse, Modality } from "@google/genai";
-import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript, IconName, Slide, Chapter } from "../types";
+import type { ChatMessage, MeetingMessage, Project, QuizQuestion, VideoScript, YouTubeTrack, Video, ShortFormVideoScript, IconName, Slide, Chapter, YouTubePlaylist, YouTubeChannel } from "../types";
 // Fix: Use a namespace import to correctly reference the exported functions from the mock service.
 import * as mockService from './geminiServiceMocks';
+// Fix: Import schemas from mock service to be used in Gemini API calls.
+import { quizSchema, videoScriptSchema, shortFormVideoScriptSchema, presentationSchema } from './geminiServiceMocks';
 
 let isGeminiQuotaExceeded = false;
 let isApiKeyMissing = false; // New flag
@@ -374,6 +376,24 @@ async function getVideosFromPlaylistProviders(playlistId: string, existingVideoI
 
 // --- Main Exported Service Functions ---
 
+export const searchYouTubePlaylists = async (categoryTitle: string): Promise<YouTubePlaylist[]> => {
+    try {
+        const response = await fetch(`/api/sugerir_playlists?categoria=${encodeURIComponent(categoryTitle)}`);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || `Falha na busca de playlists: ${response.statusText}`);
+        }
+        const playlists: YouTubePlaylist[] = await response.json();
+        return playlists;
+    } catch (error) {
+        console.error("Ocorreu um erro ao buscar playlists da API Vercel:", error);
+        if (error instanceof Error) {
+            throw new Error(`Busca de playlists indisponível: ${error.message}`);
+        }
+        throw new Error("Falha ao se comunicar com o serviço de sugestão de playlists.");
+    }
+};
+
 export const getVideosFromPlaylistUrl = async (url: string, existingVideoIds: Set<string>): Promise<Video[]> => {
     const match = url.match(playlistIdRegex);
     if (!match || !match[1]) {
@@ -550,255 +570,350 @@ Escreva conteúdo substancial e detalhado para cada seção. Não adicione nenhu
         for await (const chunk of stream) {
             yield chunk.text;
         }
-    } catch (error: any) {
-        if (error instanceof QuotaExceededError || (error.message && error.message.toLowerCase().includes('quota'))) {
-            isGeminiQuotaExceeded = true;
+    } catch (error) {
+        if (error instanceof QuotaExceededError) {
             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando dados de simulação.' }}));
             yield* mockService.getMockEbookStreamGenerator();
-        } else {
-            console.error(`Gemini API Error in generateEbookProjectStream:`, error);
-            throw new Error(`Erro na comunicação com a IA: ${error.message}`);
+            return;
         }
+        console.error("generateEbookProjectStream error:", error);
+        throw new Error("Falha ao gerar o projeto do ebook. " + (error as Error).message);
     }
 };
 
+// Fix: Implement `extendEbookProjectStream` to add more chapters to an existing project.
 export const extendEbookProjectStream = async function* (project: Project): AsyncGenerator<string> {
     if (isApiKeyMissing) {
         window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Chave de API não configurada. Usando dados de simulação.' }}));
-        yield* mockService.getMockExtendEbookStreamGenerator(); 
+        yield* mockService.getMockExtendEbookStreamGenerator();
         return;
     }
-
     try {
         if (isGeminiQuotaExceeded) {
              throw new QuotaExceededError("A cota da API do Gemini já foi excedida nesta sessão.");
         }
-        
+        const availableIcons: IconName[] = ['BookOpen', 'Brain', 'Chart', 'Dollar', 'Fire', 'Heart', 'Sparkles', 'Wrench', 'Film', 'Dumbbell', 'Cart', 'UsersGroup', 'Pencil'];
         const lastChapterNumber = project.chapters.length;
-        // Simplified existing content to reduce token usage
-        const existingContent = `Título: ${project.name}\nIntrodução: ${project.introduction}\n${project.chapters.map((c, i) => `[CAPÍTULO ${i + 1}: ${c.title.replace(`Capítulo ${i + 1}: `, '')}][ÍCONE: ${c.icon || 'BookOpen'}]`).join('\n')}`;
-        
-        const availableIcons: IconName[] = ['BookOpen', 'Brain', 'Chart', 'Dollar', 'Fire', 'Heart', 'Sparkles', 'Wrench', 'Film', 'Dumbbell', 'Cart'];
+        const projectSummary = `
+Título: ${project.name}
+Introdução: ${project.introduction}
+${project.chapters.map((c, i) => `Resumo do Capítulo ${i + 1}: ${c.title}`).join('\n')}
+Conclusão (até agora): ${project.conclusion}
+`;
 
-        const prompt = `Você é um escritor especialista continuando um ebook existente. O conteúdo atual do ebook é:\n\n${existingContent}\n\nContinue a partir do capítulo ${lastChapterNumber + 1} e escreva mais 10 capítulos. Mantenha o tom, estilo e formato do conteúdo existente. A resposta DEVE estar em markdown, seguindo estritamente esta estrutura para os novos capítulos:
+        const prompt = `Você está continuando a escrever um ebook. O ebook já tem ${lastChapterNumber} capítulos.
+Aqui está um resumo do conteúdo existente:
+${projectSummary}
+
+Continue o ebook escrevendo mais 10 capítulos, começando pelo capítulo ${lastChapterNumber + 1}.
+A resposta DEVE estar em markdown, seguindo estritamente esta estrutura para os novos capítulos:
 - Capítulos: Use o formato "[CAPÍTULO X: Título do Capítulo][ÍCONE: NomeDoIcone]"
-- Não inclua uma nova introdução ou conclusão. Comece diretamente com o próximo capítulo.
+- NÃO inclua uma nova introdução ou conclusão.
+- NÃO repita os capítulos existentes.
 
 Para cada tag "[ÍCONE: NomeDoIcone]", escolha um e apenas um nome de ícone da seguinte lista que melhor represente o conteúdo do capítulo: ${availableIcons.join(', ')}.
-Exemplo de capítulo: "[CAPÍTULO ${lastChapterNumber + 1}: Tópicos Avançados][ÍCONE: Brain]"
-Escreva conteúdo substancial e detalhado para cada novo capítulo.`;
+Exemplo de capítulo: "[CAPÍTULO ${lastChapterNumber + 1}: Tópico Avançado][ÍCONE: Brain]"
+Escreva conteúdo substancial e detalhado para cada novo capítulo. Não adicione nenhum texto ou formatação fora desta estrutura. Comece diretamente com o primeiro novo capítulo.`;
 
         const stream = await ai.models.generateContentStream({
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: { systemInstruction: "Você é um escritor especialista em continuar conteúdo educacional estruturado em formato de ebook, seguindo rigorosamente as instruções de formatação." }
+            config: { systemInstruction: "Você é um escritor especialista em continuar conteúdo educacional estruturado, seguindo rigorosamente as instruções de formatação." }
         });
 
         for await (const chunk of stream) {
             yield chunk.text;
         }
-    } catch (error: any) {
-        if (error instanceof QuotaExceededError || (error.message && error.message.toLowerCase().includes('quota'))) {
-            isGeminiQuotaExceeded = true;
+    } catch (error) {
+        if (error instanceof QuotaExceededError) {
             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando dados de simulação.' }}));
             yield* mockService.getMockExtendEbookStreamGenerator();
-        } else {
-            console.error(`Gemini API Error in extendEbookProjectStream:`, error);
-            throw new Error(`Erro na comunicação com a IA: ${error.message}`);
+            return;
         }
+        console.error("extendEbookProjectStream error:", error);
+        throw new Error("Falha ao estender o ebook. " + (error as Error).message);
     }
 };
 
-
-export const generateImagePromptForText = async (title: string, content: string): Promise<string> => {
+// Fix: Implement `generateImagePromptForText` to create prompts for AI image generators.
+export const generateImagePromptForText = async (text: string, context: string): Promise<string> => {
     try {
-        const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Create a short, visually descriptive prompt in English to generate a cover image for an ebook titled "${title}" with the following content: "${content.substring(0, 400)}...".
-The prompt should be suitable for an AI image generator. Focus on creating a compelling, artistic, and relevant visual.
-Include keywords like: "digital art", "cinematic lighting", "vibrant colors", "epic", "detailed illustration".
-Example: 'digital art of a futuristic city at sunset, cinematic lighting, vibrant colors, epic detailed illustration'.
-Respond with only the prompt text.`,
-            config: { systemInstruction: "You are an expert in creating powerful prompts for AI image generators." }
-        }), 'generateImagePromptForText');
-        return response.text.trim().replace(/"/g, ''); // Remove quotes that the model sometimes adds
+        const response = await handleApiCall<GenerateContentResponse>(() => {
+            const prompt = `Crie um prompt em inglês para um gerador de imagens de IA (como Imagen ou Midjourney) que capture a essência do seguinte conteúdo.
+O prompt deve ser descritivo, evocativo e focado em elementos visuais.
+Título/Tópico Principal: "${text}"
+Contexto Adicional: "${context}"
+Retorne APENAS o prompt.`;
+
+            return ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: { systemInstruction: "Você é um especialista em criar prompts para geradores de imagem de IA. Seus prompts são concisos e artisticamente descritivos." }
+            });
+        }, 'generateImagePromptForText');
+        return response.text.replace(/["`]/g, '').trim();
     } catch (error) {
         if (error instanceof QuotaExceededError) {
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando prompt de simulação.' }}));
             return mockService.getMockImagePrompt();
         }
         throw error;
     }
 };
 
-export const generateImage = async (prompt: string): Promise<string> => {
+// Fix: Implement `generateImage` to generate images using Imagen model.
+export const generateImage = async (prompt: string, aspectRatio: '1:1' | '3:4' | '4:3' | '9:16' | '16:9' = '1:1'): Promise<string> => {
     try {
-        const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: {
-                parts: [{ text: prompt }],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE],
-            },
-        }), 'generateImage');
-
-        // Extract the image data from the response
-        const imagePart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
-        if (imagePart?.inlineData) {
-            return imagePart.inlineData.data;
+        const response = await handleApiCall<any>(() => {
+            return ai.models.generateImages({
+                model: 'imagen-4.0-generate-001',
+                prompt: prompt,
+                config: {
+                    numberOfImages: 1,
+                    outputMimeType: 'image/png',
+                    aspectRatio: aspectRatio,
+                },
+            });
+        }, 'generateImage');
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            return response.generatedImages[0].image.imageBytes;
         }
-
-        throw new Error("A resposta da IA não continha uma imagem válida.");
-
+        throw new Error("A IA não retornou nenhuma imagem.");
     } catch (error) {
         if (error instanceof QuotaExceededError) {
-            const message = isApiKeyMissing 
-                ? "Chave de API não configurada. Usando imagem de simulação." 
-                : "Cota de IA excedida. Usando imagem de simulação.";
-            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message }}));
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando imagem de simulação.' }}));
             return mockService.getMockImageBase64();
         }
         throw error;
     }
 };
 
-export const generatePromptIdeas = async (existingPrompt: string): Promise<string[]> => {
+// Fix: Implement `generateWebpageFromProject` to convert an ebook project into a styled HTML page.
+export const generateWebpageFromProject = async (project: Project): Promise<string> => {
+    try {
+        const response = await handleApiCall<GenerateContentResponse>(() => {
+            const projectContent = `
+Título: ${project.name}
+Autor: ${project.createdBy}
+Introdução: ${project.introduction}
+${project.chapters.map((c, i) => `Capítulo ${i + 1}: ${c.title}\n${c.content}`).join('\n\n')}
+Conclusão: ${project.conclusion}
+`;
+            const prompt = `Transforme o seguinte conteúdo de um ebook em uma única página HTML estilizada, similar à estética do Gamma.app.
+- Use um design moderno, limpo e de modo escuro.
+- O HTML deve ser autônomo, com CSS em uma tag <style> no <head>.
+- Use fontes legíveis do Google Fonts.
+- Crie uma paleta de cores agradável, possivelmente baseada no tema do ebook, mas mantendo a estética escura e premium.
+- Estruture o conteúdo de forma lógica com cabeçalhos, parágrafos e talvez seções distintas para cada capítulo.
+- Retorne APENAS o código HTML completo, começando com <!DOCTYPE html> e terminando com </html>. Não inclua markdown ou explicações.
+
+Conteúdo do Ebook:
+${projectContent}
+`;
+            return ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: { systemInstruction: "Você é um desenvolvedor web especialista em criar páginas de destino bonitas e responsivas a partir de conteúdo de texto." },
+            });
+        }, 'generateWebpageFromProject');
+        return response.text.replace(/```html\n?|```/g, '').trim();
+    } catch (error) {
+        if (error instanceof QuotaExceededError) {
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando layout de simulação.' }}));
+            return mockService.getMockWebpage();
+        }
+        throw error;
+    }
+};
+
+// Fix: Implement `generatePromptIdeas` to generate alternative image prompt ideas.
+export const generatePromptIdeas = async (prompt: string): Promise<string[]> => {
     try {
         const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Baseado no prompt de imagem "${existingPrompt}", gere 3 variações ou melhorias alternativas. As respostas devem ser apenas os prompts, em uma lista.`,
+            contents: `Dado o seguinte prompt para um gerador de imagens: "${prompt}". Gere 3 variações ou ideias alternativas criativas. As novas ideias devem manter o tema central, mas explorar diferentes estilos, composições ou elementos. Retorne APENAS um array JSON de strings.`,
             config: {
-                systemInstruction: "Você é um assistente de IA que ajuda a refinar prompts de geração de imagem.",
                 responseMimeType: "application/json",
-                responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } }
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                }
             }
         }), 'generatePromptIdeas');
         return JSON.parse(response.text);
     } catch (error) {
         if (error instanceof QuotaExceededError) {
+             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando sugestões de simulação.' }}));
             return mockService.getMockPromptIdeas();
         }
         throw error;
     }
-}
+};
 
+// Fix: Implement `generateEbookQuiz` to create a quiz from a project's content.
 export const generateEbookQuiz = async (project: Project): Promise<QuizQuestion[]> => {
     try {
         const response = await handleApiCall<GenerateContentResponse>(() => {
-            const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => c.content).join('\n')}`;
+            const projectContent = `Título: ${project.name}\n${project.chapters.map(c => c.content).join('\n')}`;
+            const prompt = `Crie um quiz com 5 perguntas de múltipla escolha para testar o conhecimento sobre o conteúdo do ebook a seguir.
+Para cada pergunta, forneça 4 opções e indique a resposta correta.
+Retorne a resposta no formato JSON especificado.
+
+Conteúdo do Ebook:
+${projectContent}`;
+
             return ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Crie um quiz com ${Math.min(5, project.chapters.length)} perguntas de múltipla escolha (4 opções) baseado no conteúdo do ebook a seguir. Apenas uma resposta pode ser correta. O quiz deve testar o conhecimento chave do ebook. \n\nEBOOK:\n${content.substring(0, 8000)}`,
-                config: { responseMimeType: "application/json", responseSchema: mockService.quizSchema }
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: quizSchema
+                }
             });
         }, 'generateEbookQuiz');
         return JSON.parse(response.text);
     } catch (error) {
-         if (error instanceof QuotaExceededError) {
+        if (error instanceof QuotaExceededError) {
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando quiz de simulação.' }}));
             return mockService.getMockEbookQuiz();
         }
         throw error;
     }
 };
 
+// Fix: Implement `generateVideoScript` to create a video script from a project.
 export const generateVideoScript = async (project: Project): Promise<VideoScript> => {
     try {
         const response = await handleApiCall<GenerateContentResponse>(() => {
-            const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}`;
+            const projectContent = `Título: ${project.name}\n${project.chapters.map(c => c.content).join('\n')}`;
+            const prompt = `Analise o conteúdo deste ebook e crie um roteiro para um vídeo curto (1-2 minutos).
+O roteiro deve ter de 3 a 5 cenas. Para cada cena, forneça:
+1.  'narration': Um texto curto e cativante para ser narrado.
+2.  'prompt': Uma descrição concisa em inglês para um gerador de imagens de IA criar um visual para a cena.
+3.  'fullNarrationScript': Um script completo juntando todas as narrações.
+Retorne a resposta no formato JSON especificado.
+
+Conteúdo do Ebook:
+${projectContent}`;
+
             return ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Crie um roteiro para um vídeo curto (aproximadamente 1 minuto) baseado no conteúdo do ebook a seguir. Divida o roteiro em 3 a 5 cenas. Para cada cena, forneça um texto de narração conciso e um prompt de busca para encontrar um vídeo de estoque relevante no YouTube (em português). No final, forneça o roteiro de narração completo. \n\nEBOOK:\n${content.substring(0, 8000)}`,
-                config: { responseMimeType: "application/json", responseSchema: mockService.videoScriptSchema }
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: videoScriptSchema
+                }
             });
         }, 'generateVideoScript');
         return JSON.parse(response.text);
     } catch (error) {
         if (error instanceof QuotaExceededError) {
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando roteiro de simulação.' }}));
             return mockService.getMockVideoScript();
         }
         throw error;
     }
 };
 
+// Fix: Implement `generateShortFormVideoScript` for creating TikTok/Reels style video scripts.
 export const generateShortFormVideoScript = async (project: Project): Promise<ShortFormVideoScript> => {
     try {
         const response = await handleApiCall<GenerateContentResponse>(() => {
-            const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}`;
+            const projectContent = `Título: ${project.name}\nIntrodução: ${project.introduction}\n${project.chapters.map(c => c.content).join('\n')}`;
+            const prompt = `Analise o conteúdo deste ebook e crie um roteiro para um vídeo curto vertical (estilo TikTok/Reels) de 15-20 segundos.
+O roteiro deve incluir:
+1.  'hook': Uma frase de impacto para os primeiros 2 segundos.
+2.  'scenes': Uma lista de 3 cenas. Cada cena deve ter:
+    - 'narration': Um texto curto para a legenda/narração.
+    - 'imagePrompt': Um prompt em inglês para um gerador de imagem de IA criar um visual dinâmico para a cena.
+3.  'cta': Uma chamada para ação curta no final.
+4.  'musicSuggestion': Palavras-chave para o estilo da música de fundo (ex: 'upbeat electronic', 'lo-fi').
+Retorne a resposta no formato JSON especificado.
+
+Conteúdo do Ebook:
+${projectContent}`;
+
             return ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Crie um roteiro para um vídeo curto (estilo TikTok/Reels, 15-30 segundos) baseado no conteúdo do ebook: "${project.name}". O vídeo deve ser rápido, cativante e visual. O roteiro deve ter: um 'hook' (frase inicial de impacto), 3-5 'scenes' (cenas) com uma narração curta e um 'imagePrompt' em inglês para cada, um 'cta' (chamada para ação), e uma 'musicSuggestion' (sugestão de estilo musical em inglês). O imagePrompt deve ser descritivo para gerar uma imagem de arte digital. \n\nEBOOK:\n${content.substring(0, 5000)}`,
-                config: { responseMimeType: "application/json", responseSchema: mockService.shortFormVideoScriptSchema }
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: shortFormVideoScriptSchema
+                }
             });
         }, 'generateShortFormVideoScript');
         return JSON.parse(response.text);
     } catch (error) {
         if (error instanceof QuotaExceededError) {
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando roteiro de simulação.' }}));
             return mockService.getMockShortFormVideoScript();
         }
         throw error;
     }
 };
 
+// Fix: Implement `generateTtsAudio` to convert text to speech.
 export const generateTtsAudio = async (text: string): Promise<string> => {
     try {
-        const response = await handleApiCall<GenerateContentResponse>(() => ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text: text }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: { voiceName: 'Kore' }, // A natural-sounding voice
+        const response = await handleApiCall<GenerateContentResponse>(() => {
+            return ai.models.generateContent({
+                model: "gemini-2.5-flash-preview-tts",
+                contents: [{ parts: [{ text: text }] }],
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: {
+                        voiceConfig: {
+                          prebuiltVoiceConfig: { voiceName: 'Kore' }, // A neutral, clear voice
+                        },
                     },
                 },
-            },
-        }), 'generateTtsAudio');
-        
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!base64Audio) throw new Error("A resposta da API de áudio não continha dados de áudio.");
-
-        return base64Audio;
-    } catch (error) {
-        // Mock service for TTS is not defined, so just re-throw
-        console.error("TTS generation failed:", error);
-        throw error;
-    }
-};
-
-
-export const generatePresentationFromProject = async (project: Project): Promise<Slide[]> => {
-    try {
-        const response = await handleApiCall<GenerateContentResponse>(() => {
-            const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}\nConclusão: ${project.conclusion}`;
-            return ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: `Crie uma apresentação de slides concisa e visualmente impactante baseada no conteúdo do ebook a seguir. Gere um total de 10 slides. Para cada slide, forneça um título, 2-4 pontos de conteúdo (content) em formato de array de strings, e um 'imagePrompt' criativo em inglês para gerar uma imagem de fundo relevante. \n\nEBOOK:\n${content.substring(0, 8000)}`,
-                config: { responseMimeType: "application/json", responseSchema: mockService.presentationSchema }
             });
-        }, 'generatePresentationFromProject');
-        return JSON.parse(response.text);
+        }, 'generateTtsAudio');
+
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (base64Audio) {
+            return base64Audio;
+        }
+        throw new Error("A IA não retornou dados de áudio.");
+
     } catch (error) {
         if (error instanceof QuotaExceededError) {
-            return mockService.getMockPresentation();
+             window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'error', message: 'Cota de IA excedida para TTS. Função indisponível.' }}));
+             throw error; // No mock for this, so we re-throw to let the caller handle it.
         }
         throw error;
     }
 };
 
-export const generateWebpageFromProject = async (project: Project): Promise<string> => {
+// Fix: Implement `generatePresentationFromProject` to summarize a project into slides.
+export const generatePresentationFromProject = async (project: Project): Promise<Slide[]> => {
     try {
         const response = await handleApiCall<GenerateContentResponse>(() => {
-            const content = `Título: ${project.name}\nIntrodução: ${project.introduction}\nCapítulos: ${project.chapters.map(c => `${c.title}: ${c.content}`).join('\n')}\nConclusão: ${project.conclusion}`;
+            const projectContent = `Título: ${project.name}\n${project.chapters.map(c => `Capítulo: ${c.title}\n${c.content}`).join('\n\n')}`;
+            const prompt = `Analise o conteúdo deste ebook e resuma-o em uma apresentação de slides concisa (cerca de 5-7 slides).
+Para cada slide, forneça:
+1.  'title': Um título claro e curto.
+2.  'content': Uma lista (array de strings) com 2 a 4 pontos chave em formato de bullet points.
+3.  'imagePrompt': Um prompt em inglês para um gerador de imagens de IA criar uma imagem de fundo relevante para o slide.
+Retorne a resposta como um array de objetos JSON, seguindo o schema.
+
+Conteúdo do Ebook:
+${projectContent}`;
+
             return ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Crie o código HTML completo para uma página web de uma única página (single-page) baseada no conteúdo do ebook a seguir. O resultado deve ser um único arquivo HTML. Use CSS em uma tag <style> para estilização. O design deve ser moderno, profissional e responsivo, ideal para ser exportado como um PDF elegante. Use um tema escuro (dark theme) que combine com a estética ARC7HIVE (cores base: #121212, #1e1e1e) com destaques em vermelho (#E50914). Para elementos secundários, você pode usar uma cor de destaque que complemente o tópico do ebook: "${project.name}". Garanta que o texto seja legível e a tipografia seja limpa (ex: use fontes do Google Fonts como 'Inter' ou 'Poppins'). Não inclua JavaScript. Retorne apenas o código HTML, começando com <!DOCTYPE html>. \n\nEBOOK:\n${content.substring(0, 8000)}`,
-                config: { systemInstruction: "Você é um desenvolvedor front-end especialista que cria páginas web elegantes e bem estruturadas a partir de conteúdo textual." }
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: presentationSchema
+                }
             });
-        }, 'generateWebpageFromProject');
-        return response.text.replace(/```html\n?|```/g, '').trim();
+        }, 'generatePresentationFromProject');
+        return JSON.parse(response.text);
     } catch (error) {
         if (error instanceof QuotaExceededError) {
-            return mockService.getMockWebpage();
+            window.dispatchEvent(new CustomEvent('app-notification', { detail: { type: 'info', message: 'Cota de IA excedida. Usando apresentação de simulação.' }}));
+            return mockService.getMockPresentation();
         }
         throw error;
     }

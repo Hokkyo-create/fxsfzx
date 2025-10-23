@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useRef, useCallback } from 'react';
 import type { Project, Chapter, IconName } from '../types';
 import { users } from '../data';
@@ -10,6 +11,7 @@ import EditImageModal from './EditImageModal';
 import InteractiveEbookModal from './InteractiveEbookModal';
 import VideoGenerationModal from './VideoGenerationModal';
 import ShortFormVideoGeneratorModal from './ShortFormVideoGeneratorModal';
+// Fix: Correctly import all necessary functions from the Gemini service.
 import { generateImagePromptForText, generateImage, generateWebpageFromProject, extendEbookProjectStream } from '../services/geminiService';
 // Fix: Import the EbookCard component instead of redefining it locally.
 import EbookCard from './EbookCard';
@@ -203,6 +205,7 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
     }, []);
     
     const handleRegenerateImage = async (newPrompt: string): Promise<string> => {
+        // Fix: Call generateImage with no specified aspect ratio, letting it default.
         const base64 = await generateImage(newPrompt);
         return `data:image/png;base64,${base64}`;
     };
@@ -223,7 +226,8 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
         setIsGeneratingImage(prev => ({ ...prev, cover: true }));
         try {
             const prompt = await getCoverPrompt();
-            const base64 = await generateImage(prompt);
+            // Fix: Specify the '3:4' aspect ratio for the ebook cover.
+            const base64 = await generateImage(prompt, '3:4');
             const newImageUrl = `data:image/png;base64,${base64}`;
             onUpdateProject(project.id, { coverImageUrl: newImageUrl });
         } catch (error) {
@@ -240,7 +244,8 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
         try {
             const chapter = project.chapters[chapterIndex];
             const prompt = await getChapterPrompt(chapter);
-            const base64 = await generateImage(prompt);
+            // Fix: Specify the '16:9' aspect ratio for chapter images.
+            const base64 = await generateImage(prompt, '16:9');
             const newImageUrl = `data:image/png;base64,${base64}`;
 
             const updatedChapters = [...project.chapters];
@@ -414,7 +419,7 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                 onClose={() => setIsEditCoverModalOpen(false)}
                 imageUrl={project.coverImageUrl}
                 getInitialPrompt={getCoverPrompt}
-                onRegenerate={handleRegenerateImage}
+                onRegenerate={(newPrompt) => handleRegenerateImage(newPrompt, '3:4')}
                 onSave={handleSaveCover}
             />
             {isEditChapterImageModalOpen !== null && (
@@ -423,7 +428,7 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
                     onClose={() => setIsEditChapterImageModalOpen(null)}
                     imageUrl={project.chapters[isEditChapterImageModalOpen].imageUrl}
                     getInitialPrompt={() => getChapterPrompt(project.chapters[isEditChapterImageModalOpen!])}
-                    onRegenerate={handleRegenerateImage}
+                    onRegenerate={(newPrompt) => handleRegenerateImage(newPrompt, '16:9')}
                     onSave={(newUrl) => handleSaveChapterImage(isEditChapterImageModalOpen!, newUrl)}
                 />
             )}

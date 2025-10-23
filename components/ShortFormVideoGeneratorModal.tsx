@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Project, ShortFormVideoScript } from '../types';
 import Icon from './Icons';
+// Fix: Correctly import all necessary functions from the Gemini service.
 import { generateShortFormVideoScript, generateTtsAudio, generateImage } from '../services/geminiService';
 import { decode, encode, pcmToWav } from '../utils/audioUtils';
 
@@ -124,7 +125,8 @@ const ShortFormVideoGeneratorModal: React.FC<ShortFormVideoGeneratorModalProps> 
             const totalImages = generatedScript.scenes.length;
             const imagePromises = generatedScript.scenes.map(async (scene, index) => {
                 setProgress({ value: 40 + (index / totalImages) * 60, text: `Gerando imagem para a cena ${index + 1}/${totalImages}...` });
-                const imageBase64 = await generateImage(scene.imagePrompt);
+                // Fix: Specify the '9:16' aspect ratio for vertical short-form videos.
+                const imageBase64 = await generateImage(scene.imagePrompt, '9:16');
                 return { ...scene, imageUrl: `data:image/png;base64,${imageBase64}` };
             });
             
