@@ -459,10 +459,9 @@ async function getVideosFromPlaylistProviders(playlistId: string, existingVideoI
 
 // --- Main Exported Service Functions ---
 
-export const searchYouTubePlaylists = async (categoryTitle: string): Promise<YouTubePlaylist[]> => {
-    const searchQuery = `${categoryTitle} tutorial playlist`;
+export const searchYouTubePlaylists = async (query: string): Promise<YouTubePlaylist[]> => {
     try {
-        return await searchPlaylistsFromProviders(searchQuery);
+        return await searchPlaylistsFromProviders(query);
     } catch (error) {
         console.error("An unexpected error occurred during the playlist search:", error);
         if (error instanceof Error) {
