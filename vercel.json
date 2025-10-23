@@ -24,7 +24,7 @@
   "crons": [
     {
       "path": "/api/run-daily-update",
-      "schedule": "0 17 * * *",
+      "schedule": "0 20 * * *",
       "headers": {
         "Authorization": "Bearer ${CRON_SECRET}"
       }
