@@ -1,3 +1,5 @@
 fastapi
 uvicorn
 youtubesearchpython
+supabase
+python-dotenv

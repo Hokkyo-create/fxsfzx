@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useRef, useCallback } from 'react';
 import type { Project, Chapter, IconName } from '../types';
 import { users } from '../data';
@@ -204,9 +205,9 @@ const ProjectViewerPage: React.FC<ProjectViewerPageProps> = ({ project, onBack, 
         return await generateImagePromptForText(chapter.title, chapter.content);
     }, []);
     
-    const handleRegenerateImage = async (newPrompt: string): Promise<string> => {
-        // Fix: Call generateImage with no specified aspect ratio, letting it default.
-        const base64 = await generateImage(newPrompt);
+    const handleRegenerateImage = async (newPrompt: string, aspectRatio: '1:1' | '3:4' | '4:3' | '9:16' | '16:9'): Promise<string> => {
+        // Fix: Call generateImage with the provided aspect ratio
+        const base64 = await generateImage(newPrompt, aspectRatio);
         return `data:image/png;base64,${base64}`;
     };
 
