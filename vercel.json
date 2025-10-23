@@ -1,9 +1,15 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/sugerir_playlists.py", "use": "@vercel/python" }
+    {
+      "src": "api/sugerir_playlists.py",
+      "use": "@vercel/python"
+    }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "api/sugerir_playlists.py" }
+    {
+      "src": "/(.*)",
+      "dest": "api/sugerir_playlists.py"
+    }
   ]
 }

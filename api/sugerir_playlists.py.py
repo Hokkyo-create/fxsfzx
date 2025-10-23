@@ -4,6 +4,7 @@ from youtubesearchpython import PlaylistsSearch, ChannelsSearch
 
 app = FastAPI()
 
+# Permitir chamadas do frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -11,6 +12,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Canais base por categoria
 categorias_canais = {
     "Inteligência Artificial": ["Canal AI", "AI News"],
     "Marketing Digital": ["Marketing Total", "Growth Hacker"]
@@ -26,6 +28,7 @@ def sugerir_playlists(categoria: str = Query(..., description="Categoria para su
         return {"error": "Categoria não encontrada"}
 
     playlists_sugeridas = []
+    seen_links = set()  # Evitar duplicatas
 
     for canal in categorias_canais[categoria]:
         canais = ChannelsSearch(canal, limit=3).result()['result']
@@ -33,11 +36,13 @@ def sugerir_playlists(categoria: str = Query(..., description="Categoria para su
             nome_canal = c['title']
             playlists = PlaylistsSearch(nome_canal, limit=5).result()['result']
             for p in playlists:
-                playlists_sugeridas.append({
-                    'titulo': p['title'],
-                    'link': p['link'],
-                    'thumbnail': p['thumbnails'][0]['url'],
-                    'canal': nome_canal
-                })
+                if p['link'] not in seen_links:
+                    playlists_sugeridas.append({
+                        'titulo': p['title'],
+                        'link': p['link'],
+                        'thumbnail': p['thumbnails'][0]['url'],
+                        'canal': nome_canal
+                    })
+                    seen_links.add(p['link'])
 
     return playlists_sugeridas
